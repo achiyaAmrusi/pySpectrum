@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pySpectrum.pyspectrum import Spectrum, Peak
+from pyspectrum import Spectrum, Peak
 from scipy.signal import find_peaks
 from .utils import gaussian_2_dev
 from uncertainties import ufloat

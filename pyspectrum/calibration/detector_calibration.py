@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
-from pySpectrum.pyspectrum import Spectrum, Peak
+from pyspectrum import Spectrum, Peak
 from .calbration_functions import germanium_fwhm, ge_standard_fwhm_calibration_coeff
 
 
