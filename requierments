@@ -1,6 +1,0 @@
-pandas>=2.1.1
-numpy>=1.26.0
-scipy>=1.11.3
-xarray>=2023.10.1
-matplotlib>=3.7.2
-uncertainties>=3.1.7
