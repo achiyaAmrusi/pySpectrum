@@ -222,7 +222,7 @@ class FindPeaks:
         - tuple
         peaks_properties: list
         a list of the properties of each peak found.
-        peak properties  = (peak_domain:tuple, properties of fit curve in xarray)
+        peak properties  =  properties of fit curve in xarray
 
         References
         ----------
@@ -256,8 +256,44 @@ class FindPeaks:
             fit_properties, num_of_peaks = self.fitting_method.peak_fit(peak, peak_background_data)
             # save all the peak found in the domain
             for fit in fit_properties:
-                peaks_properties.append((peak_domain, fit))
+                peaks_properties.append(fit)
         return peaks_properties
+
+    def find_all_peaks_domain(self):
+        """
+        The function finds peaks domain automatically
+        function scan the spectral_n_sigma vector which is kernel_convolution/kernel_convolution_std
+        and search for when the value is larger than 4, if the value is above 4,
+        it checks it finds the peak domain using self.peaks_domain
+        Parameters
+        ----------
+
+        Returns
+        -------
+        - tuple
+        peaks_properties: list
+        a list of the properties of each peak found.
+        peak properties  = (peak_domain:tuple, properties of fit curve in xarray)
+
+        References
+        ----------
+        [1]Phillips, Gary W., and Keith W. Marlow.
+         "Automatic analysis of gamma-ray spectra from germanium detectors."
+          Nuclear Instruments and Methods 137.3 (1976): 525-536.
+        """
+        domains = []
+        ind = 0
+        channel = self.spectrum.channels[0]
+        while ind < len(self.spectrum.channels):
+            # If it sees above threshold find the domain
+            if self.conv_n_sigma_spectrum[ind] > self.convolution.n_sigma_threshold:
+                peak_domain = self.peaks_domain(self.spectrum.energy_calibration(channel))
+                domains.append(peak_domain)
+                channel = peak_domain[1]
+                ind = np.abs(self.spectrum.channels - peak_domain[1]).argmin()
+            channel = channel + 1
+            ind = ind + 1
+        return domains
 
     def plot_all_peaks(self):
         """plot the peaks found in find_peaks
@@ -269,10 +305,8 @@ class FindPeaks:
 
    """
         peaks_properties = self.find_all_peaks()
+        peaks_domain = self.find_all_peaks_domain()
         self.spectrum.xr_spectrum().plot()
-        for peak in peaks_properties:
-            energy_domain = self.spectrum.energy_calibration(np.arange(peak[0][0], peak[0][1], 1))
-            self.fitting_method.plot_fit(energy_domain, peak[1])
-
-
-
+        for i, peak in enumerate(peaks_properties):
+            energy_domain = self.spectrum.energy_calibration(np.arange(peaks_domain[i][0], peaks_domain[i][1], 1))
+            self.fitting_method.plot_fit(energy_domain, peak)
