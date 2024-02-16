@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
-from pyspectrum import Spectrum, Peak
+from pyspectrum import Spectrum
 from .calbration_functions import germanium_fwhm, ge_standard_fwhm_calibration_coeff
 
 
@@ -16,7 +16,7 @@ class Calibration:
         if not len(peak_domain_list) == len(energy_list):
             raise f"peak_domain_list and energy_list need to have the same length"
         for ind, peak_domain in enumerate(peak_domain_list):
-            self.peaks.append(Peak(self.spectrum.xr_spectrum().sel(energy=slice(peak_domain[0],peak_domain[1]))))
+    #        self.peaks.append(Peak(self.spectrum.xr_spectrum().sel(energy=slice(peak_domain[0],peak_domain[1]))))
             self.peaks_energy.append(energy_list[ind])
 
     def generate_energy_calibration(self, degree_of_poly: int):

@@ -3,9 +3,14 @@ import math
 import xarray as xr
 from uncertainties import unumpy
 import lmfit
-import fit_functions
 # this needs to be in spectrum as a method
 ELECTRON_MASS = 511
+
+def residual_std_weight(params, data_x, data_y):
+    a = params['a']
+    b = params['b']
+    return (a*data_x + b - unumpy.nominal_values(data_y)) / (unumpy.std_devs(data_y)+1e-5)
+
 
 
 def subtract_background_from_spectra_peak(spectrum, energy_center_of_the_peak, detector_energy_resolution,
@@ -62,7 +67,7 @@ def domain_of_peak(spectrum, energy_in_the_peak, detector_energy_resolution):
                                                    start_of_energy_slice))
         fit_params.add('a', value=1.0)
         fit_params.add('b', value=0.0)
-        result = lmfit.minimize(fit_functions.residual_std_weight, fit_params,
+        result = lmfit.minimize(residual_std_weight, fit_params,
                                 args=(spectrum_slice['energy'].values, spectrum_slice.values))
         flag = not ((result.params['a'].value <= 0) or (result.params['a'].value - result.params['a'].stderr <= 0))
         start_of_energy_slice = start_of_energy_slice - energy_step_size
@@ -78,7 +83,7 @@ def domain_of_peak(spectrum, energy_in_the_peak, detector_energy_resolution):
                                                    start_of_energy_slice + 3 * detector_energy_resolution))
         fit_params.add('a', value=1.0)
         fit_params.add('b', value=0.0)
-        result = lmfit.minimize(fit_functions.residual_std_weight, fit_params,
+        result = lmfit.minimize(residual_std_weight, fit_params,
                                 args=(spectrum_slice['energy'].values, spectrum_slice.values))
         flag = not ((result.params['a'].value >= 0) or (result.params['a'].value - result.params['a'].stderr >= 0))
         start_of_energy_slice = start_of_energy_slice + energy_step_size

@@ -27,17 +27,19 @@ def gaussian_1_dev(x, amplitude, mean, fwhm):
     """
     First derivative of a Gaussian.
 
-    Parameters:
-    - x: array-like
+    Parameters
+    ----------
+    x: array-like
         Input values.
-    - amplitude: float
+    amplitude: float
         Amplitude of the Gaussian.
-    - mean: float
+    mean: float
         Mean (center) of the Gaussian.
-    - fwhm: float
+    fwhm: float
         Standard deviation/2.35482 (width) of the Gaussian
         this is half of the distance for which the Gaussian gives half of the maximum value.
-    Returns:
+    Returns
+    -------
     numpy array
         first derivaive of a Gaussian.
 
@@ -49,20 +51,22 @@ def gaussian_2_dev(x, amplitude, mean, fwhm):
     """
     First derivative of a Gaussian.
 
-    Parameters:
-    - x: array-like
+    Parameters
+    ----------
+    x: array-like
         Input values.
-    - amplitude: float
+    amplitude: float
         Amplitude of the Gaussian.
-    - mean: float
+    mean: float
         Mean (center) of the Gaussian.
-    - fwhm: float
+    fwhm: float
         Standard deviation/2.35482 (width) of the Gaussian
         this is half of the distance for which the Gaussian gives half of the maximum value.
-    Returns:
+    Returns
+    -------
     numpy array
         first derivaive of a Gaussian.
 
     """
-    return amplitude * (((fwhm/2.35482)**2-(x-mean)**2) / (fwhm/2.35482)**4) * gaussian(x, amplitude, mean, fwhm)
+    return  (((fwhm/2.35482)**2-(x-mean)**2) / (fwhm/2.35482)**4) * gaussian(x, amplitude, mean, fwhm)
 

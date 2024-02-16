@@ -3,14 +3,15 @@ import xarray as xr
 import numpy as np
 import math
 from uncertainties import ufloat, nominal_value, std_dev
-from .fit_functions import fit_gaussian
+from pyspectrum.peak_identification.peak_fit_functions import fit_gaussian
 
 
 class Peak:
     """
         Represents a peak with methods for 1D peak gaussian fit, center calculation and so on...
 
-        Attributes:
+        Attributes
+        __________
         - counts per channel (xarray.DataArray): counts per channel for all the peak.
            Methods:
 
@@ -44,7 +45,7 @@ class Peak:
         """
 
     # Constructor method
-    def __init__(self, peak_xarray: xr.DataArray, ufloat_count_left=None, ufloat_count_right=None):
+    def __init__(self, peak_xarray: xr.DataArray, peak_shape, ufloat_left_background=None, uright_background=None):
         """ Constructor of Spectrum.
 
         Parameters:
@@ -53,24 +54,28 @@ class Peak:
         # Instance variables
         if not (isinstance(peak_xarray, xr.DataArray)) and len(peak_xarray.dims) == 1:
             raise TypeError("Variable peak_xarray must be of type 1d xr.DataArray.")
+        # peak variable is channel
         self.peak = peak_xarray.rename({peak_xarray.dims[0]: 'channel'})
-        self.estimated_center, self.estimated_resolution = self.center_fwhm_estimator()
-        if ufloat_count_left is None:
+        # initialization
+        self.number_of_peaks, self.estimated_centers, self.estimated_resolution = self.center_fwhm_estimator()
+
+        # validate the background given and if none is given assume best guess
+        if ufloat_left_background is None:
             channel_min = self.peak.coords['channel'][0]
-            left_side = self.peak.sel(channel=slice(channel_min, channel_min + self.estimated_resolution))
+            left_side = self.peak.sel(channel=slice(channel_min, channel_min + self.estimated_resolution / 2))
             self.height_left = ufloat(left_side.mean(), left_side.std())
         else:
-            if not (isinstance(ufloat_count_left, type(ufloat(0, 0)))):
+            if not (isinstance(ufloat_left_background, type(ufloat(0, 0)))):
                 raise TypeError("Variable ufloat_count_left must be of type ufloat.")
-            self.height_left = ufloat_count_left
-        if ufloat_count_right is None:
+            self.height_left = ufloat_left_background
+        if uright_background is None:
             channel_max = self.peak.coords['channel'][-1]
-            right_side = self.peak.sel(channel=slice(channel_max - self.estimated_resolution, channel_max))
+            right_side = self.peak.sel(channel=slice(channel_max - self.estimated_resolution / 2, channel_max))
             self.height_left = ufloat(right_side.mean(), right_side.std())
         else:
-            if not (isinstance(ufloat_count_right, type(ufloat(0, 0)))):
+            if not (isinstance(uright_background, type(ufloat(0, 0)))):
                 raise TypeError("Variable height_right must be of type ufloat.")
-            self.height_right = ufloat_count_right
+            self.height_right = uright_background
 
     def center_fwhm_estimator(self):
         """ calculate the center of the peak
@@ -129,9 +134,9 @@ class Peak:
         maximal_channel = peak_center + fwhm / 2
         energy = self.peak.coords['channel']
         center_index = np.where(energy > peak_center)[0][0]
-        de = energy[center_index+1] - energy[center_index]
+        de = energy[center_index + 1] - energy[center_index]
         fwhm_slice = (
-            self.subtract_background(with_errors=True)).sel(channel=slice(minimal_channel-de/2, maximal_channel))
+            self.subtract_background(with_errors=True)).sel(channel=slice(minimal_channel - de / 2, maximal_channel))
         # return counts under fwhm
         return fwhm_slice.sum()
 

@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='pySpectrum',
     version='0.1',
-    packages=['pyspectrum', 'pyspectrum.spectrum', 'pyspectrum.calibration', 'pyspectrum.gamma_find_peak',
+    packages=['pyspectrum', 'pyspectrum.spectrum', 'pyspectrum.calibration', 'pyspectrum.peak_identification',
               'pyspectrum.activity_analysis'],
     url='',
     license='MIT license',
