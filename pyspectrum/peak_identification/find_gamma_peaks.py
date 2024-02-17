@@ -1,7 +1,7 @@
 import numpy as np
 from pyspectrum.spectrum import Spectrum
 from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
-from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev
+from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev, asymmetrical_rect_zero_area
 from uncertainties import ufloat
 
 EPSILON = 1e-4
@@ -249,8 +249,9 @@ class FindPeaks:
             peak_bg_r = ufloat(spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].mean(),
                                spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].std())
             # the peak
-            peak = self.spectrum.xr_spectrum().sel(energy=slice(self.spectrum.energy_calibration(peak_domain[0]),
-                                                                self.spectrum.energy_calibration(peak_domain[1])))
+            peak = self.spectrum.xr_spectrum().sel(
+                energy=slice(self.spectrum.energy_calibration(peak_domain[0]),
+                             self.spectrum.energy_calibration(peak_domain[1])))
             # fit the peak using the fitting method
             peak_background_data = [peak_bg_l - peak_bg_r, peak_bg_r]
             fit_properties, num_of_peaks = self.fitting_method.peak_fit(peak, peak_background_data)

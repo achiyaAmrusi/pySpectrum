@@ -69,7 +69,7 @@ class Spectrum:
         self.fwhm_calibration = fwhm_calibration
 
     # Instance method
-    def xr_spectrum(self, errors=False):
+    def xr_spectrum(self):
         """Return pyspectrum in xarray format
         If errors is True, the xarray values will be in ufloat format.
         Parameters
@@ -81,13 +81,8 @@ class Spectrum:
         -------
         xr.DataArray: Xarray representation of the spectrum.
         """
-        if not errors:
-            spectrum = xr.DataArray(self.counts, coords={'energy': self.energy_calibration(self.channels)},
-                                    dims=['energy'])
-        else:
-            counts_with_error = [ufloat(count, abs(count) ** 0.5) for count in self.counts]
-            spectrum = xr.DataArray(counts_with_error, coords={'energy': self.energy_calibration(self.channels)},
-                                    dims=['energy'])
+        spectrum = xr.DataArray(self.counts, coords={'energy': self.energy_calibration(self.channels)},
+                                dims=['energy'])
         return spectrum
 
     def calibrate_energy(self, energy_calibration):

@@ -3,6 +3,7 @@ import numpy as np
 import math
 from uncertainties import nominal_value, std_dev, ufloat
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
 
 class PeakFit:
@@ -60,29 +61,32 @@ class GaussianWithBGFitting(PeakFit):
          - fit_params: tuple
              The tuple containing the fit parameters (amplitude, mean, stddev) and the covariance matrix.
          """
-        # fix the coordinate name
+        # define the coordinate name
         coord_name = list(spectrum_slice.coords.keys())[0]
         spectrum_slice = spectrum_slice.rename({spectrum_slice.coords[coord_name].name: 'channel'})
 
         # Initial guess for fit parameters
         estimated_amplitude, estimated_center, estimated_fwhm = GaussianWithBGFitting.gaussian_initial_guess_estimator(
             spectrum_slice)
-        initial_guess = {'amplitude': estimated_amplitude,
-                         'mean': estimated_center,
+        # nominal guess for curvefit
+        initial_guess = {'amplitude': nominal_value(estimated_amplitude.item()),
+                         'mean': nominal_value(estimated_center.item()),
                          'fwhm': estimated_fwhm,
                          'height_difference': nominal_value(p0[0]),
                          'peak_baseline': nominal_value(p0[1])}
-
+        # calculate the std of the data for sigma in curvefit
+        std = (initial_guess['fwhm'] / (2 * np.sqrt(2 * np.log(2))))
+        # approximate the gaussian part and the background part of the peak
+        erf = np.array([(math.erf(-(x-initial_guess['mean'])/std) + 1) for x in spectrum_slice.coords['channel'].to_numpy()])
+        approx_nominal_bg = 0.5 * initial_guess['height_difference'] * erf + initial_guess['peak_baseline']
+        approx_nominal_gauss = spectrum_slice - approx_nominal_bg
+        approx_var_bg = ((0.5 * std_dev(p0[0]) * erf)**2 + std_dev(p0[1])**2)
+        approx_var_gauss = abs(approx_nominal_gauss)
         # Perform the fit
-        if (isinstance(spectrum_slice.values[0], type(ufloat(0, 0))) or
-                isinstance(spectrum_slice.values[0], type(ufloat(0, 0) + 1))):
-            sigma = [std_dev(count) for count in spectrum_slice.values]
-            fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
-                                                 p0=initial_guess, sigma=sigma)
-        else:
-            fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
-                                                 p0=initial_guess)
+        fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
+                                             p0=initial_guess, kwargs={'sigma': (approx_var_gauss+approx_var_bg)**0.5})
         return [fit_result]
+
 
     @staticmethod
     def single_gaussian_fitting(spectrum_slice: xr.DataArray, p0):
@@ -92,40 +96,42 @@ class GaussianWithBGFitting(PeakFit):
         Parameters
         ----------
         spectrum_slice: xarray.DataArray
-          The pyspectrum with 'x' as the only coordinate.
+          spectrum slice of the peak with one coordinate
         p0 : list
           parameters for the fit. p0 = [counts_from_the_left, counts_from_the_right]
          Returns:
          - fit_params: tuple
              The tuple containing the fit parameters (amplitude, mean, stddev) and the covariance matrix.
          """
-        # fix the coordinate name
+        # define the coordinate name
         coord_name = list(spectrum_slice.coords.keys())[0]
         spectrum_slice = spectrum_slice.rename({spectrum_slice.coords[coord_name].name: 'channel'})
 
         # Initial guess for fit parameters
         estimated_amplitude, estimated_center, estimated_fwhm = GaussianWithBGFitting.gaussian_initial_guess_estimator(
             spectrum_slice)
-        initial_guess = {'amplitude': estimated_amplitude,
-                         'mean': estimated_center,
+        # nominal guess for curvefit
+        initial_guess = {'amplitude': nominal_value(estimated_amplitude.item()),
+                         'mean': nominal_value(estimated_center.item()),
                          'fwhm': estimated_fwhm,
                          'height_difference': nominal_value(p0[0]),
                          'peak_baseline': nominal_value(p0[1])}
-
+        # calculate the std of the data for sigma in curvefit
+        std = (initial_guess['fwhm'] / (2 * np.sqrt(2 * np.log(2))))
+        # approximate the gaussian part and the background part of the peak
+        erf = np.array([(math.erf(-(x-initial_guess['mean'])/std) + 1) for x in spectrum_slice.coords['channel'].to_numpy()])
+        approx_nominal_bg = 0.5 * initial_guess['height_difference'] * erf + initial_guess['peak_baseline']
+        approx_nominal_gauss = spectrum_slice - approx_nominal_bg
+        approx_var_bg = ((0.5 * std_dev(p0[0]) * erf)**2 + std_dev(p0[1])**2)
+        approx_var_gauss = abs(approx_nominal_gauss)
         # Perform the fit
-        if (isinstance(spectrum_slice.values[0], type(ufloat(0, 0))) or
-                isinstance(spectrum_slice.values[0], type(ufloat(0, 0) + 1))):
-            sigma = [std_dev(count) for count in spectrum_slice.values]
-            fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
-                                                 p0=initial_guess, sigma=sigma)
-        else:
-            fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
-                                                 p0=initial_guess)
+        fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
+                                             p0=initial_guess, kwargs={'sigma': (approx_var_gauss+approx_var_bg)**0.5})
         return [fit_result]
 
     @staticmethod
     def gaussian_initial_guess_estimator(peak: xr.DataArray):
-        """ calculate the center of the peak
+        """ estimate the center of the peak
         the function operate by the following order -
          calculate the peak domain,
           find maximal value
@@ -133,6 +139,8 @@ class GaussianWithBGFitting(PeakFit):
           calculate the mean energy which is the center of the peak (like center of mass)
         Parameters
         ----------
+        peak: xarray.DataArray
+          spectrum slice of a peak with one coordinate
           """
         maximal_count = peak.max()
         # Calculate the half-maximum count

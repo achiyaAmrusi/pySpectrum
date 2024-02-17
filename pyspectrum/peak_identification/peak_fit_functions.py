@@ -7,7 +7,8 @@ def gaussian(x, amplitude, mean, fwhm):
     """
     Gaussian function.
 
-    Parameters:
+    Parameters
+    ----------
     x: array-like
         Input values.
     amplitude: float
@@ -31,7 +32,8 @@ def gaussian_fitting(xarray_spectrum, initial_peak_center=0, initial_fwhm=1):
     """
     Fit a Gaussian to an xarray pyspectrum.
 
-    Parameters:
+    Parameters
+    ----------
     xarray_spectrum: xarray.DataArray The pyspectrum with 'x' as the only coordinate.
     initial_peak_center: guess for initial peak center (default is 0)
     initial_std: guess for initial std (default is 1 as approximated to HPGe detectors)
