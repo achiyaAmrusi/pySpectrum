@@ -3,32 +3,37 @@ import xarray as xr
 import numpy as np
 import math
 from uncertainties import ufloat, nominal_value, std_dev
-from pyspectrum.peak_identification.peak_fit_functions import fit_gaussian
+from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
 
 
 class Peak:
     """
         Represents a peak with methods for 1D peak gaussian fit, center calculation and so on...
 
-        Attributes
-        __________
-        - counts per channel (xarray.DataArray): counts per channel for all the peak.
-           Methods:
+    Parameters
+    ----------
+    peak_xarray: xr.DataArray
+     The peak counts and energies in form of an xarray
+    ubackground_l, ubackground_r: ufloat (default ufloat(0, 1))
+     Mean counts from the left and right to the peak
+     This is needed for background subtraction
+    Attributes
+    ----------
+    peak_xarray: xr.DataArray
+     The peak counts and energies in form of an xarray
+    height_left, height_right: ufloat (default ufloat(0, 1))
+     Mean counts from the left and right to the peak
+     This is needed for background subtraction
+    estimated_center, estimated_resolution: float
+     the estimated mean and resolution
+    Methods
+    -------
 
     - `__init__(self, xarray.DataArray)`:
       Constructor method to initialize a Peak instance.
 
     - `peak_gaussian_fit_parameters(self, energy_in_the_peak, resolution_estimation=1, background_subtraction=False)`:
       Fit a Gaussian function to a peak in the spectrum and return fit parameters.
-
-    - `peak_fwhm_fit_method(self, energy_in_the_peak, resolution_estimation=1, background_subtraction=False)`:
-      Calculate the Full Width at Half Maximum (FWHM) of a peak in the spectrum using peak_gaussian_fit_parameters.
-
-    - `peak_amplitude_fit_method(self, energy_in_the_peak, resolution_estimation=1, background_subtraction=False)`:
-      Calculate the amplitude of a peak in the spectrum using peak_gaussian_fit_parameters.
-
-    - `peak_center_fit_method(self, energy_in_the_peak, resolution_estimation=1, background_subtraction=False)`:
-      Calculate the center (mean) of a peak in the spectrum using peak_gaussian_fit_parameters.
 
     - `peak_energy_center_first_moment_method(self, energy_in_the_peak, detector_energy_resolution=1,
                                               background_subtraction=False)`:
@@ -45,11 +50,10 @@ class Peak:
         """
 
     # Constructor method
-    def __init__(self, peak_xarray: xr.DataArray, ubackground_l=None, ubackground_r=None):
-        """ Constructor of Spectrum.
+    def __init__(self, peak_xarray: xr.DataArray, ubackground_l=ufloat(0, 1), ubackground_r=ufloat(0, 1)):
+        """ Constructor of peak.
 
-        Parameters:
-        - counts per channel (xarray.DataArray): counts per channel for all the peak.
+
         """
         # Instance variables
         if not (isinstance(peak_xarray, xr.DataArray)) and len(peak_xarray.dims) == 1:
@@ -57,25 +61,16 @@ class Peak:
         # peak variable is channel
         self.peak = peak_xarray.rename({peak_xarray.dims[0]: 'channel'})
         # initialization
-        self.number_of_peaks, self.estimated_centers, self.estimated_resolution = self.center_fwhm_estimator()
+        _, self.estimated_center, self.estimated_resolution = GaussianWithBGFitting.gaussian_initial_guess_estimator(self.peak)
 
-        # validate the background given and if none is given assume best guess
-        if ubackground_l is None:
-            channel_min = self.peak.coords['channel'][0]
-            left_side = self.peak.sel(channel=slice(channel_min, channel_min + self.estimated_resolution / 2))
-            self.height_left = ufloat(left_side.mean(), left_side.std())
-        else:
-            if not (isinstance(ubackground_l, type(ufloat(0, 0)))):
-                raise TypeError("Variable ufloat_count_left must be of type ufloat.")
-            self.height_left = ubackground_l
-        if ubackground_r is None:
-            channel_max = self.peak.coords['channel'][-1]
-            right_side = self.peak.sel(channel=slice(channel_max - self.estimated_resolution / 2, channel_max))
-            self.height_left = ufloat(right_side.mean(), right_side.std())
-        else:
-            if not (isinstance(ubackground_r, type(ufloat(0, 0)))):
-                raise TypeError("Variable height_right must be of type ufloat.")
-            self.height_right = ubackground_r
+        if not (isinstance(ubackground_l, type(ufloat(0, 0)))):
+            raise TypeError("Variable ubackground_l must be of type ufloat.")
+        self.height_left = ubackground_l
+
+        if not (isinstance(ubackground_r, type(ufloat(0, 0)))):
+            raise TypeError("Variable ubackground_r must be of type ufloat.")
+        self.height_right = ubackground_r
+
 
     def center_fwhm_estimator(self):
         """ calculate the center of the peak
@@ -128,12 +123,13 @@ class Peak:
         """
         # Calculate the peak domain and slice the peak
 
-        fwhm, _ = self.fit_method_fwhm(background_subtraction=True)
-        peak_center, _ = self.first_moment_method_center(background_subtraction=True)
-        minimal_channel = peak_center - fwhm / 2
-        maximal_channel = peak_center + fwhm / 2
+        fit_parameter = self.gaussian_fit_parameters()
+        fwhm = fit_parameter['curvefit_coefficients'].sel(param='fwhm')
+        peak_mean = fit_parameter['curvefit_coefficients'].sel(param='mean')
+        minimal_channel = peak_mean - fwhm / 2
+        maximal_channel = peak_mean + fwhm / 2
         energy = self.peak.coords['channel']
-        center_index = np.where(energy > peak_center)[0][0]
+        center_index = np.where(energy > peak_mean)[0][0]
         de = energy[center_index + 1] - energy[center_index]
         fwhm_slice = (
             self.subtract_background(with_errors=True)).sel(channel=slice(minimal_channel - de / 2, maximal_channel))
@@ -163,92 +159,9 @@ class Peak:
 
         The covariance matrix provides the uncertainties in the fit parameters.
         """
-        if background_subtraction:
-            peak = self.subtract_background(with_errors=True)
-        else:
-            peak = self.peak_with_errors()
-
-        fit_params, cov = fit_gaussian(peak.rename({'channel': 'x'}),
-                                       self.estimated_center,
-                                       self.estimated_resolution)
-        return fit_params, cov
-
-    def fit_method_fwhm(self, background_subtraction=False):
-        """ Calculate the Full Width at Half Maximum (FWHM) of a peak in the spectrum.
-
-       The function estimates the FWHM of the specified peak by fitting a Gaussian function to it.
-       If background_subtraction is enabled, background subtraction is performed before the fitting process.
-
-       Parameters:
-       - resolution_estimation (float, optional): The estimated resolution of the peak. Default is 1.
-       - background_subtraction (bool, optional): If True, subtract background before fitting. Default is False.
-
-        Returns
-        -------
-        tuple: A tuple containing the FWHM and its associated uncertainty.
-       The uncertainty is calculated considering the covariance matrix obtained from the Gaussian fit.
-       the uncertainty given regard the covariance of the other fit parameters up to one std in them.
-
-       Note: The function assumes the output of `peak_gaussian_fit_parameters` is used for fitting.
-       """
-        fit_params, cov = self.gaussian_fit_parameters(background_subtraction)
-        fwhm = fit_params[2]
-        fwhm_error = (cov[2, 2] ** 0.5 +
-                      (cov[1, 1] ** 0.5 / fit_params[1]) * np.abs(cov[2, 1]) ** 0.5 +
-                      (cov[0, 0] ** 0.5 / fit_params[0]) * np.abs(cov[2, 0]) ** 0.5)
-        return fwhm, fwhm_error
-
-    def fit_method_amplitude(self, background_subtraction=False):
-        """Calculate the amplitude of a peak in the spectrum.
-
-        The function estimates the amplitude of the specified peak by fitting a Gaussian function to it.
-        If background_subtraction is enabled, background subtraction is performed before the fitting process.
-
-        Parameters:
-        - energy_in_the_peak (float): The energy around which to calculate the peak amplitude.
-        - resolution_estimation (float, optional): The estimated resolution of the peak. Default is 1.
-        - background_subtraction (bool, optional): If True, subtract background before fitting. Default is False.
-
-        Returns
-        -------
-        tuple: A tuple containing the peak amplitude and its associated uncertainty.
-          The uncertainty is calculated considering the covariance matrix obtained from the Gaussian fit,
-          accounting for the covariance of the other fit parameters up to one standard deviation in them.
-
-        Note: The function assumes the output of `peak_gaussian_fit_parameters` is used for fitting.
-        """
-        fit_params, cov = self.gaussian_fit_parameters(background_subtraction)
-        amplitude = fit_params[0]
-        amplitude_error = (cov[0, 0] ** 0.5 +
-                           (cov[1, 1] ** 0.5 / fit_params[1]) * np.abs(cov[0, 1]) ** 0.5 +
-                           (cov[2, 2] ** 0.5 / fit_params[2]) * np.abs(cov[0, 2]) ** 0.5)
-        return amplitude, amplitude_error
-
-    def fit_method_center(self, background_subtraction=False):
-        """Calculate the center (mean) of a peak in the spectrum.
-
-        The function estimates the center of the specified peak by fitting a Gaussian function to it.
-        If background_subtraction is enabled, background subtraction is performed before the fitting process.
-
-        Parameters:
-        - energy_in_the_peak (float): The energy around which to calculate the peak center.
-        - resolution_estimation (float, optional): The estimated resolution of the peak. Default is 1.
-        - background_subtraction (bool, optional): If True, subtract background before fitting. Default is False.
-
-        Returns
-        -------
-        tuple: A tuple containing the peak center and its associated uncertainty.
-          The uncertainty is calculated considering the covariance matrix obtained from the Gaussian fit,
-          accounting for the covariance of the other fit parameters up to one standard deviation in them.
-
-        Note: The function assumes the output of `peak_gaussian_fit_parameters` is used for fitting.
-        """
-        fit_params, cov = self.gaussian_fit_parameters(background_subtraction)
-        center = fit_params[1]
-        center_error = (cov[1, 1] ** 0.5 +
-                        (cov[0, 0] ** 0.5 / fit_params[0]) * np.abs(cov[1, 0]) ** 0.5 +
-                        (cov[2, 2] ** 0.5 / fit_params[2]) * np.abs(cov[1, 2]) ** 0.5)
-        return center, center_error
+        fit_params = GaussianWithBGFitting.single_gaussian_fitting(self.peak, [self.height_left - self.height_right,
+                                                                               self.height_right])
+        return fit_params[0]
 
     def fit_method_counts_under_fwhm(self):
         """Calculate the sum of counts within the Full Width at Half Maximum (FWHM) of a peak.
@@ -277,8 +190,10 @@ class Peak:
         Note: The function assumes background subtraction is performed during FWHM calculation.
         """
         # Calculate the peak amplitude and fwhm
-        amplitude, amplitude_error = self.fit_method_amplitude(background_subtraction=True)
-        fwhm, _ = self.fit_method_fwhm(background_subtraction=True)
+        fit_parameter = self.gaussian_fit_parameters()
+        amplitude = fit_parameter['curvefit_coefficients'].sel(param='amplitude')
+        amplitude_error = fit_parameter['curvefit_covariance'].sel(cov_i='amplitude', cov_j='amplitude')
+        fwhm = fit_parameter['curvefit_coefficients'].sel(param='fwhm')
         # energy size of each bin
         bin_size = self.peak.coords['channel'][1] - self.peak.coords['channel'][0]
         # factor to get area under the fwhm
@@ -305,25 +220,21 @@ class Peak:
         Note: The function assumes the output of `peak_gaussian_fit_parameters` is used for fitting.
         """
         # Calculate the peak domain and slice the peak
-        fit_params, cov = self.gaussian_fit_parameters(background_subtraction)
-        fwhm = fit_params[2]
-        fwhm_error = (cov[2, 2] ** 0.5 +
-                      (cov[1, 1] ** 0.5 / fit_params[1]) * np.abs(cov[2, 1]) ** 0.5 +
-                      (cov[0, 0] ** 0.5 / fit_params[0]) * np.abs(cov[2, 0]) ** 0.5)
-        gaussian_center = fit_params[1]
-        gaussian_center_error = (cov[1, 1] ** 0.5 +
-                                 (cov[2, 2] ** 0.5 / fit_params[1]) * np.abs(cov[1, 2]) ** 0.5 +
-                                 (cov[0, 0] ** 0.5 / fit_params[0]) * np.abs(cov[1, 0]) ** 0.5)
-        if not (math.isnan(fwhm_error) or math.isnan(gaussian_center_error)):
-            minimal_channel = max(gaussian_center - gaussian_center_error - fwhm - fwhm_error,
+        fit_parameter = self.gaussian_fit_parameters()
+        fwhm = fit_parameter['curvefit_coefficients'].sel(param='fwhm')
+        fwhm_error = fit_parameter['curvefit_covariance'].sel(cov_i='fwhm', cov_j='fwhm')
+        peak_mean = fit_parameter['curvefit_coefficients'].sel(param='mean')
+        peak_mean_error = fit_parameter['curvefit_covariance'].sel(cov_i='mean', cov_j='mean')
+        if not (math.isnan(fwhm_error) or math.isnan(peak_mean_error)):
+            minimal_channel = max(peak_mean - peak_mean_error - fwhm - fwhm_error,
                                   self.peak.coords['channel'][0])
-            maximal_channel = min(gaussian_center + gaussian_center_error + fwhm + fwhm_error,
+            maximal_channel = min(peak_mean + peak_mean_error + fwhm + fwhm_error,
                                   self.peak.coords['channel'][-1])
             fwhm_slice = (self.peak_with_errors()).sel(channel=slice(minimal_channel, maximal_channel))
         else:
-            minimal_channel = max(gaussian_center - fwhm,
+            minimal_channel = max(peak_mean - fwhm,
                                   self.peak.coords['channel'][0])
-            maximal_channel = min(gaussian_center + fwhm,
+            maximal_channel = min(peak_mean + fwhm,
                                   self.peak.coords['channel'][-1])
             fwhm_slice = (self.peak_with_errors()).sel(channel=slice(minimal_channel, maximal_channel))
         # return the mean energy in the fwhm which is the energy center

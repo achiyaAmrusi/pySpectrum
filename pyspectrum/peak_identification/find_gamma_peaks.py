@@ -2,6 +2,7 @@ import numpy as np
 from pyspectrum.spectrum import Spectrum
 from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
 from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev, asymmetrical_rect_zero_area
+from pyspectrum.peak_identification.peak import Peak
 from uncertainties import ufloat
 
 EPSILON = 1e-4
@@ -295,6 +296,40 @@ class FindPeaks:
             channel = channel + 1
             ind = ind + 1
         return domains
+
+    def to_peak(self, value_in_domain):
+        """
+        find and return the peak in which the value_in_domain is in.
+
+        Parameters
+        ----------
+        value_in_domain: float
+        value in the domain which is inside a peak.
+
+        Returns
+        -------
+        Peak
+        the peak in which value in domain is in
+
+        """
+        spectrum = self.spectrum.counts
+        peak_domain = self.peaks_domain(value_in_domain)
+        # fwhm and center of the peak
+        middle_channel = round((peak_domain[0] + peak_domain[1]) / 2)
+        ch_fwhm = self.spectrum.fwhm_calibration(
+            self.spectrum.energy_calibration(middle_channel)) / self.spectrum.energy_calibration[1]
+
+        # the background levels from left and right
+        peak_bg_l = ufloat(spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].mean(),
+                           spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].std())
+        peak_bg_r = ufloat(spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].mean(),
+                           spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].std())
+        # the peak
+        peak = self.spectrum.xr_spectrum().sel(
+            energy=slice(self.spectrum.energy_calibration(peak_domain[0]),
+                         self.spectrum.energy_calibration(peak_domain[1])))
+        # fit the peak using the fitting method
+        return Peak(peak, peak_bg_l, peak_bg_r)
 
     def plot_all_peaks(self):
         """plot the peaks found in find_peaks

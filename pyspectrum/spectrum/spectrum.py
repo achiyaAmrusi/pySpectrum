@@ -3,28 +3,35 @@ Module for handling spectral data.
 
 This module defines the Spectrum class for representing and processing spectral data.
 """
-
-
 import xarray as xr
 import numpy as np
 import pandas as pd
-from uncertainties import ufloat
 
 
 class Spectrum:
     """
         Represents a spectrum with methods for data manipulation and analysis.
 
-        Attributes:
-        __________
+        Parameters
+        ----------
+        counts : np.ndarray
+         1D array of spectrum counts.
+        channels : np.ndarray
+         1D array of spectrum channels.
+        energy_calibration_poly : np.poly1d
+         Calibration polynomial for energy calibration.
+        fwhm_calibration : Callable
+         a given method that return the fwhm per energy
+
+        Attributes
+        ----------
         counts (numpy.ndarray): Array of counts.
         channels (numpy.ndarray): Array of channels.
         energy_calibration (numpy.poly1d): Polynomial for energy calibration.
         fwhm_calibration (function): function for fwhm calibration channel->fwhm.
 
-        Methods:
-        ________
-
+        Methods
+        -------
         `__init__(self, counts, channels, energy_calibration_poly=np.poly1d([1, 0]))`
         Constructor method to initialize a Spectrum instance.
 
@@ -47,15 +54,6 @@ class Spectrum:
 
     # Constructor method
     def __init__(self, counts, channels, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None):
-        """ Constructor of Spectrum.
-
-        Parameters
-        ----------
-        counts (np.ndarray): 1D array of spectrum counts.
-        channels (np.ndarray): 1D array of spectrum channels.
-        energy_calibration_poly (np.poly1d): Calibration polynomial for energy calibration.
-        fwhm_calibration (function): a given method
-        """
         # Instance variables
         if not (isinstance(counts, np.ndarray) and counts.ndim == 1):
             raise TypeError("Variable counts must be of type 1 dimension np.array.")
@@ -114,11 +112,9 @@ class Spectrum:
             raise TypeError("fwhm_calibration needs to be callable.")
         self.fwhm_calibration = fwhm_calibration
 
-
-    @classmethod
-    def load_spectrum_file_to_spectrum_class(cls, file_path,
-                                             energy_calibration_poly=np.poly1d([1, 0]),
-                                             fwhm_calibration=None, sep='\t', **kwargs):
+    @staticmethod
+    def from_file(file_path, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None, sep='\t',
+                  **kwargs):
 
         """
 
@@ -131,7 +127,8 @@ class Spectrum:
         two columns with tab(\t) between them. first line is column names - channel, counts
         energy_calibration_poly: numpy.poly1d([a, b])
         the energy calibration of the detector
-        fwhm_calibration:a function that given energy/channel(first raw in file) returns the fwhm
+        fwhm_calibration: Callable
+        a function that given energy/channel(first raw in file) returns the fwhm
         sep: str
         the separation letter
         kwargs: more parameter for pd.read_csv
@@ -146,7 +143,35 @@ class Spectrum:
             data = pd.read_csv(file_path, sep=sep, **kwargs)
         except ValueError:
             raise FileNotFoundError(f"The given data file path '{file_path}' do not exist.")
-        return Spectrum(data[data.columns[1]].to_numpy(),
-                        data[data.columns[0]].to_numpy(),
+        return Spectrum.from_dataframe(data, energy_calibration_poly, fwhm_calibration)
+
+    @staticmethod
+    def from_dataframe(spectrum_df, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None):
+
+        """
+
+        load spectrum from a file which has 2 columns which tab between them
+        first column is the channels/energy and the second is counts
+        function return Spectrum
+        Parameters
+        ----------
+        spectrum_df: pd.DataFrame
+         spectrum in form of a dataframe such that the column are -  'channel', 'counts'
+        energy_calibration_poly: numpy.poly1d([a, b])
+        the energy calibration of the detector
+        fwhm_calibration:a function that given energy/channel(first raw in file) returns the fwhm
+        sep: str
+        the separation letter
+        kwargs: more parameter for pd.read_csv
+
+        Returns
+        -------
+        Spectrum
+        the spectrum from the files with the given parameters
+        """
+        # Load the pyspectrum file in form of DataFrame
+
+        return Spectrum(spectrum_df['counts'].to_numpy(),
+                        spectrum_df['channel'].to_numpy(),
                         energy_calibration_poly,
                         fwhm_calibration)
