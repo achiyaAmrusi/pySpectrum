@@ -1,8 +1,3 @@
-"""
-Module for handling spectral data.
-
-This module defines the Spectrum class for representing and processing spectral data.
-"""
 import xarray as xr
 import numpy as np
 import pandas as pd
@@ -68,7 +63,8 @@ class Spectrum:
 
     # Instance method
     def xr_spectrum(self):
-        """Return pyspectrum in xarray format
+        """
+        Return pyspectrum in xarray format
         If errors is True, the xarray values will be in ufloat format.
         Parameters
         ----------
@@ -88,7 +84,8 @@ class Spectrum:
         change the energy calibration polynom of Spectrum
         Parameters
         ----------
-        energy_calibration (np.poly1d): The calibration function energy_calibration(channel) -> detector energy.
+        energy_calibration: np.poly1d
+         The calibration function energy_calibration(channel) -> detector energy.
 
         Returns
         -------
@@ -99,10 +96,12 @@ class Spectrum:
         self.energy_calibration = energy_calibration
 
     def calibrate_fwhm(self, fwhm_calibration):
-        """change the energy calibration polynom of Spectrum
+        """
+        change the energy calibration polynom of Spectrum
         Parameters
         ----------
-         - fwhm_calibration (function): The calibration function fwhm_calibration(channel) -> fwhm in the channel.
+         fwhm_calibration: Callable
+          The calibration function fwhm_calibration(channel) -> fwhm in the channel.
 
         Returns
         -------
@@ -115,22 +114,20 @@ class Spectrum:
     @staticmethod
     def from_file(file_path, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None, sep='\t',
                   **kwargs):
-
         """
-
         load spectrum from a file which has 2 columns which tab between them
         first column is the channels/energy and the second is counts
         function return Spectrum
         Parameters
         ----------
         file_path: str
-        two columns with tab(\t) between them. first line is column names - channel, counts
+         two columns with tab(\t) between them. first line is column names - channel, counts
         energy_calibration_poly: numpy.poly1d([a, b])
-        the energy calibration of the detector
+         the energy calibration of the detector
         fwhm_calibration: Callable
-        a function that given energy/channel(first raw in file) returns the fwhm
+         a function that given energy/channel(first raw in file) returns the fwhm
         sep: str
-        the separation letter
+         the separation letter
         kwargs: more parameter for pd.read_csv
 
         Returns
@@ -140,16 +137,14 @@ class Spectrum:
         """
         # Load the pyspectrum file in form of DataFrame
         try:
-            data = pd.read_csv(file_path, sep=sep, **kwargs)
+            data = pd.read_csv(file_path, sep=sep, names=['channel', 'counts'], **kwargs)
         except ValueError:
             raise FileNotFoundError(f"The given data file path '{file_path}' do not exist.")
         return Spectrum.from_dataframe(data, energy_calibration_poly, fwhm_calibration)
 
     @staticmethod
     def from_dataframe(spectrum_df, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None):
-
         """
-
         load spectrum from a file which has 2 columns which tab between them
         first column is the channels/energy and the second is counts
         function return Spectrum
@@ -159,10 +154,7 @@ class Spectrum:
          spectrum in form of a dataframe such that the column are -  'channel', 'counts'
         energy_calibration_poly: numpy.poly1d([a, b])
         the energy calibration of the detector
-        fwhm_calibration:a function that given energy/channel(first raw in file) returns the fwhm
-        sep: str
-        the separation letter
-        kwargs: more parameter for pd.read_csv
+         fwhm_calibration:a function that given energy/channel(first raw in file) returns the fwhm
 
         Returns
         -------

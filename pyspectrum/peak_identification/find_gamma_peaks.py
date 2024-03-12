@@ -1,7 +1,7 @@
 import numpy as np
 from pyspectrum.spectrum import Spectrum
 from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
-from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev, asymmetrical_rect_zero_area
+from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev
 from pyspectrum.peak_identification.peak import Peak
 from uncertainties import ufloat
 
@@ -10,10 +10,20 @@ EPSILON = 1e-4
 
 class Convolution:
     """
-    tool to convolve a function (domain and range) with a kernel of zero area function.
+    Tool to convolve a function (domain and range) with a kernel of zero area function.
     TODO: change the convolution method to do the convolution. in order to save time i can calculate the kernel
           on twice the domain. than there is no need to call kernel in each step of the loop. Instead, I can each
           step of the loop just cut the relevant kernel part
+    Parameters
+     ----------
+     width: Callable
+         for a given bin returns the approximated width of the peaks
+     zero_area_function: Callable
+         a function that takes a domain of bins, a bin (in the domain) which is the center, and the threshold for
+     n_sigma such that the if the value of the convolution(bin) > n_sigma there is a peak in bin
+     n_sigma_threshold: float
+         n_sigma such that the if the value of the convolution(bin) > n_sigma there is a peak in bin
+
     Attributes:
     __________
     width: Callable
@@ -123,21 +133,21 @@ class FindPeaks:
         Methods:
         ________
 
-    - `__init__(self, xarray.DataArray)`:
+    `__init__(self, xarray.DataArray)`:
       Constructor method to initialize a FindPeaks instance.
 
-    - `find_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
+    find_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
       find peaks in the gamma spectrum given the acceptable statistical error
       and the fwhm tolerance from the given fwhm function in spectrum(Spectrum.fwhm_calibration)
 
-    - `find_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
+    `find_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
       find peaks in the gamma spectrum given the acceptable statistical error
       and the fwhm tolerance from the given fwhm function in spectrum(Spectrum.fwhm_calibration)
 
-    - `plot_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
+    `plot_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
       find the peaks using find_all_peaks and plot them
 
-    - `peak(self, peak_center:list, channel_mode=False)`:
+    `peak(self, peak_center:list, channel_mode=False)`:
       for a given peak_center list the function returns all the Peak object of the peaks around the peak_centers
       The domain of the peak is calculated using convolution method
     """
@@ -152,7 +162,7 @@ class FindPeaks:
         convolution: Convolution
          The convolution of the spectrum with the chosen kernel.
          This kernel_convolution is calculated only once due to the time intensive cost of calculating it
-        fitting_type: 'str'
+        fitting_type: str
         the type of the fitting method. for now there is only
         'HPGe_spectroscopy'
         Returns
@@ -160,7 +170,8 @@ class FindPeaks:
 """
         self.spectrum = spectrum
         self.convolution = convolution
-        _, _, self.conv_n_sigma_spectrum = convolution.convolution(spectrum.channels, spectrum.counts)
+        _, _, self.conv_n_sigma_spectrum = convolution.convolution(spectrum.energy_calibration(spectrum.channels),
+                                                                   spectrum.counts)
         if fitting_type == 'HPGe_spectroscopy':
             self.fitting_method = GaussianWithBGFitting(False)
         else:
@@ -169,6 +180,7 @@ class FindPeaks:
     def peaks_domain(self, value_in_domain):
         """
         find signal peak domain on which the channel is in using the threshold of FindPeaks
+
         Parameters
         ----------
         value_in_domain: float
@@ -197,15 +209,24 @@ class FindPeaks:
         # find peak left edge
         mean_n_sigma_fwhm = n_sigma_threshold
         channel_l = channel + 1
-        while spectral_n_sigma[channel_l] > n_sigma_threshold / 2 or mean_n_sigma_fwhm >= n_sigma_threshold / 2:
+        while (spectral_n_sigma[channel_l] > n_sigma_threshold / 2 or mean_n_sigma_fwhm >= n_sigma_threshold / 2)\
+                and channel_l > (self.spectrum.channels[1]):
             channel_l = channel_l - 1
-            mean_n_sigma_fwhm = (spectral_n_sigma[channel_l - round(ch_fwhm):channel_l]).mean()
+            half_fwhm_distance = channel_l - round(ch_fwhm / 2)
+            if half_fwhm_distance <= self.spectrum.channels[0]:
+                half_fwhm_distance = self.spectrum.channels[0]
+            mean_n_sigma_fwhm = (spectral_n_sigma[half_fwhm_distance:channel_l]).mean()
+
         # find peak right edge
         mean_n_sigma_fwhm = n_sigma_threshold
         channel_r = channel - 1
-        while spectral_n_sigma[channel_r] > n_sigma_threshold / 2 or mean_n_sigma_fwhm >= n_sigma_threshold / 2:
+        while (spectral_n_sigma[channel_r] > n_sigma_threshold / 2 or mean_n_sigma_fwhm >= n_sigma_threshold / 2)\
+                and channel_r < (self.spectrum.channels[-2]):
             channel_r = channel_r + 1
-            mean_n_sigma_fwhm = (spectral_n_sigma[channel_r:channel_r + round(ch_fwhm)]).mean()
+            half_fwhm_distance = channel_r + round(ch_fwhm / 2)
+            if half_fwhm_distance >= self.spectrum.channels[-1]:
+                half_fwhm_distance = self.spectrum.channels[-1]
+            mean_n_sigma_fwhm = (spectral_n_sigma[channel_r:half_fwhm_distance]).mean()
         return channel_l - 1, channel_r + 1
 
     def find_all_peaks(self):
@@ -235,9 +256,11 @@ class FindPeaks:
         Journal of Physics D: Applied Physics 36.15 (2003): 1903.
         """
 
-        peaks_domain = self.find_all_peaks_domain()
+        peaks_domain = self.find_domains_above_snr()
         spectrum = self.spectrum.counts
         peaks_properties = []
+        peaks_valid_domain = []
+        fit_worked = True
         for peak_domain in peaks_domain:
             # fwhm in the peak
             middle_channel = round((peak_domain[0] + peak_domain[1]) / 2)
@@ -245,10 +268,22 @@ class FindPeaks:
                 self.spectrum.energy_calibration(middle_channel)) / self.spectrum.energy_calibration[1]
 
             # the background levels from left and right
-            peak_bg_l = ufloat(spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].mean(),
-                               spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].std())
-            peak_bg_r = ufloat(spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].mean(),
-                               spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].std())
+            if (peak_domain[0] - round(ch_fwhm / 2)) < 0:
+                peak_domain_left = peak_domain[0] if peak_domain[0] > 0 else peak_domain[0]+1
+                peak_bg_l = ufloat(spectrum[0:peak_domain_left].mean(),
+                                   spectrum[0:peak_domain_left].std())
+            else:
+                peak_bg_l = ufloat(spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].mean(),
+                                   spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].std())
+
+            if (peak_domain[1] + round(ch_fwhm / 2)) > len(spectrum):
+                peak_domain_right = peak_domain[1] if peak_domain[1] < len(spectrum) else peak_domain[1]-1
+                peak_bg_r = ufloat(spectrum[peak_domain_right:len(spectrum)].mean(),
+                                   spectrum[peak_domain_right:len(spectrum)].std())
+            else:
+                peak_bg_r = ufloat(spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].mean(),
+                                   spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].std())
+
             # the peak
             peak = self.spectrum.xr_spectrum().sel(
                 energy=slice(self.spectrum.energy_calibration(peak_domain[0]),
@@ -257,16 +292,20 @@ class FindPeaks:
             peak_background_data = [peak_bg_l - peak_bg_r, peak_bg_r]
             fit_properties, num_of_peaks = self.fitting_method.peak_fit(peak, peak_background_data)
             # save all the peak found in the domain
-            for fit in fit_properties:
-                peaks_properties.append(fit)
-        return peaks_properties
+            if fit_properties:
+                for fit in fit_properties:
+                    peaks_properties.append(fit)
+                peaks_valid_domain.append(peak_domain)
 
-    def find_all_peaks_domain(self):
+        return peaks_properties, peaks_valid_domain
+
+    def find_domains_above_snr(self):
         """
         The function finds peaks domain automatically
         function scan the spectral_n_sigma vector which is kernel_convolution/kernel_convolution_std
-        and search for when the value is larger than 4, if the value is above 4,
+        and search for when the value is larger than n_sigma_threshold, if the value is above n_sigma_threshold,
         it checks it finds the peak domain using self.peaks_domain
+        Warning, function does not distinguish if the peak is a valid peak, only if it is above noise.
         Parameters
         ----------
 
@@ -283,14 +322,20 @@ class FindPeaks:
          "Automatic analysis of gamma-ray spectra from germanium detectors."
           Nuclear Instruments and Methods 137.3 (1976): 525-536.
         """
+
         domains = []
-        ind = 0
-        channel = self.spectrum.channels[0]
-        while ind < len(self.spectrum.channels):
-            # If it sees above threshold find the domain
+        ind = 1
+        channel = self.spectrum.channels[1]
+        while ind < (len(self.spectrum.channels)-1):
+            # If above threshold find the domain
             if self.conv_n_sigma_spectrum[ind] > self.convolution.n_sigma_threshold:
                 peak_domain = self.peaks_domain(self.spectrum.energy_calibration(channel))
-                domains.append(peak_domain)
+                if len(domains) == 0:
+                    domains.append(peak_domain)
+                elif peak_domain[0] <= domains[-1][0]:
+                    domains[-1] = (domains[-1][0], peak_domain[1])
+                else:
+                    domains.append(peak_domain)
                 channel = peak_domain[1]
                 ind = np.abs(self.spectrum.channels - peak_domain[1]).argmin()
             channel = channel + 1
@@ -332,7 +377,7 @@ class FindPeaks:
         return Peak(peak, peak_bg_l, peak_bg_r)
 
     def plot_all_peaks(self):
-        """plot the peaks found in find_peaks
+        """plot the peaks found in find_peaks via fitting method
         Parameters
         ----------
 
@@ -340,8 +385,7 @@ class FindPeaks:
         -------
 
    """
-        peaks_properties = self.find_all_peaks()
-        peaks_domain = self.find_all_peaks_domain()
+        peaks_properties, peaks_domain = self.find_all_peaks()
         self.spectrum.xr_spectrum().plot()
         for i, peak in enumerate(peaks_properties):
             energy_domain = self.spectrum.energy_calibration(np.arange(peaks_domain[i][0], peaks_domain[i][1], 1))

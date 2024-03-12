@@ -1,36 +1,44 @@
 import numpy as np
+import xarray as xr
+from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
 from scipy.optimize import curve_fit
-from pyspectrum import Spectrum
-from .calbration_functions import germanium_fwhm, ge_standard_fwhm_calibration_coeff
+from .calbration_functions import germanium_fwhm, standard_fwhm_generator
 
 
 class Calibration:
-    """"""
+    """
 
-    def __init__(self, spectrum:Spectrum):
-        self.spectrum = spectrum
-        self.peaks = []
-        self.peaks_energy = []
+    """
 
-    def add_peaks(self, peak_domain_list: list, energy_list: list):
-        if not len(peak_domain_list) == len(energy_list):
-            raise f"peak_domain_list and energy_list need to have the same length"
-        for ind, peak_domain in enumerate(peak_domain_list):
-    #        self.peaks.append(Peak(self.spectrum.xr_spectrum().sel(energy=slice(peak_domain[0],peak_domain[1]))))
-            self.peaks_energy.append(energy_list[ind])
+    def __init__(self, spectrum: xr.DataArray, photopeak_energies: list, photopeak_estimated_domain: list,
+                 detector_fwhm_function=germanium_fwhm, fwhm_generator=standard_fwhm_generator):
+        self.spectrum = spectrum.rename({spectrum.dims[0]: 'channel'})
+        self.photopeak_domains = photopeak_estimated_domain
+        self.photopeak_energies = photopeak_energies
+        self.detector_fwhm_function = detector_fwhm_function
+        self.fwhm_generator = fwhm_generator
 
-    def generate_energy_calibration(self, degree_of_poly: int):
-
+    def generate_calibration(self, degree_of_poly: int, p0=None):
+        if p0 is None:
+            p0 = [0, 0.02, 0]
         peaks_center = []
-        for peak in self.peaks:
-            peaks_center.append(peak.first_moment_method_center())
-        return np.polyfit(peaks_center, self.peaks_energy, deg=degree_of_poly)
-
-    def generate_fwhm_calibration(self, resolution_function=germanium_fwhm, p0=ge_standard_fwhm_calibration_coeff):
-        """
-        f : callable
-        """
         peaks_fwhm = []
-        for peak in self.peaks:
-            peaks_fwhm.append(peak.estimated_resolution)
-        return curve_fit(resolution_function, self.peaks_energy, peaks_fwhm, p0=p0)
+        for domain in self.photopeak_domains:
+            peak = self.spectrum.sel(channel=slice(domain[0], domain[1]))
+            _, center, fwhm_ch = GaussianWithBGFitting.gaussian_initial_guess_estimator(peak)
+            peaks_center.append(center)
+            peaks_fwhm.append(fwhm_ch)
+
+        energy_calib = np.poly1d(np.polyfit(peaks_center, self.photopeak_energies, deg=degree_of_poly))
+        fwhm_val = [energy_calib(peaks_center[i] + peaks_fwhm[i] / 2) -
+                    energy_calib(peaks_center[i] - peaks_fwhm[i] / 2) for i in range(len(peaks_center))]
+        fwhm_calib = self._fit_fwhm(self.photopeak_energies, fwhm_val, p0=p0)
+        return energy_calib, fwhm_calib
+
+    def _fit_fwhm(self, energies, estimated_fwhm, p0):
+        """
+        optimizing approximated fwhm function
+        """
+        parm, _ = curve_fit(f=self.detector_fwhm_function, xdata=energies, ydata=estimated_fwhm, p0=p0, maxfev=10000)
+        return self.fwhm_generator(np.abs(parm))
+

@@ -17,11 +17,11 @@ def gaussian_2_dev(x, mean, fwhm):
     Returns
     -------
     numpy array
-        second derivaive of a Gaussian.
+        second derivative of a Gaussian.
 
     """
     std = (fwhm/2.35482)
-    return ((std**2-(x-mean)**2) / std**4) * 1/((2*np.pi)**0.5 * std)* np.exp(-(1/2)*((x-mean) / std)**2)
+    return ((std**2-(x-mean)**2) / std**4) * 1/((2*np.pi)**0.5 * std) * np.exp(-(1/2)*((x-mean) / std)**2)
 
 
 def asymmetrical_rect_zero_area(x, mean, width):
@@ -39,10 +39,13 @@ def asymmetrical_rect_zero_area(x, mean, width):
     Returns
     -------
     numpy array
-        second derivaive of a Gaussian.
 
+1   1-----1         1
+1   1     1---------1
+1   1
+1----
     """
-    left_right_width_factor = 0.5
+    left_right_width_factor = 0.6
     func_val = []
     domains = [mean - width/2-round(left_right_width_factor*2*width),
                mean - width / 2,
