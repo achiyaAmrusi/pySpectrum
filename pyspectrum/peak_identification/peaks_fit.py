@@ -1,7 +1,7 @@
 import xarray as xr
 import numpy as np
 import math
-from .find_gamma_peaks import Convolution
+from pyspectrum.peak_identification.convolution import Convolution
 from uncertainties import nominal_value, std_dev
 import matplotlib.pyplot as plt
 
@@ -59,8 +59,13 @@ class GaussianWithBGFitting(PeakFit):
             super().__init__(peak_overlap, self.single_gaussian_fitting, self.plot_gaussian_fit)
 
     @staticmethod
-    def gaussian_fitting_method_overlap(spectrum_slice: xr.DataArray, p0, convolution: Convolution):
+    def gaussian_fitting_method_overlap(spectrum_slice: xr.DataArray, p0, convolution:Convolution):
         """
+        Function returns number fit of the peaks in the following way,
+        it takes spectrum and tries a fit of n gaussian using gaussian and background.
+        if its not passing the x**2 test we try with additional peak untill 6 peaks.
+        there shoud be a cutoff?
+
          Fit multiple gaussian functions with background to a xarray pyspectrum.
          The method is to try and fit n gaussian functions to the spectrum,
           reduce the fitted functions from the spectrum and then check for a signal using find_peaks.
@@ -83,7 +88,6 @@ class GaussianWithBGFitting(PeakFit):
         initial_peaks_fit_properties = []
         spectrum_slice = spectrum_slice.rename({spectrum_slice.coords[coord_name].name: 'channel'})
         spectrum_subtracted = spectrum_slice
-        snr_flag = True
         num_of_peaks = 1
         while snr_flag:
             # Initial guess for fit parameters
@@ -100,23 +104,23 @@ class GaussianWithBGFitting(PeakFit):
             std = (estimated_fwhm / (2 * np.sqrt(2 * np.log(2))))
             # approximate the gaussian part and the background part of the peak
             erf = np.array(
-                [(math.erf(-(x - initial_guess['mean']) / std) + 1) for x in
+                [(math.erf(-(x - initial_peaks_fit_properties['mean']) / std) + 1) for x in
                  spectrum_slice.coords['channel'].to_numpy()])
-            spectrum_subtracted = spectrum_slice - peaks_from_properties(spectrum_slice.channel, initial_peaks_fit_properties)
+            spectrum_subtracted = spectrum_slice# - peaks_from_properties(spectrum_slice.channel, initial_peaks_fit_properties)
             conv_n_sigma_spectrum = convolution.convolution(
                 spectrum_subtracted.energy_calibration(spectrum_subtracted.channels),
                 spectrum_subtracted.counts)
             if not any(conv_n_sigma_spectrum>2*convolution.n_sigma_threshold):
                 snr_flag = False
 
-        approx_nominal_bg = 0.5 * initial_guess['height_difference'] * erf + initial_guess['peak_baseline']
+        approx_nominal_bg = 0.5 * initial_peaks_fit_properties['height_difference'] * erf + initial_peaks_fit_properties['peak_baseline']
         approx_nominal_gauss = spectrum_slice - approx_nominal_bg
         approx_var_bg = ((0.5 * std_dev(p0[0]) * erf) ** 2 + std_dev(p0[1]) ** 2)
         approx_var_gauss = abs(approx_nominal_gauss)
 
         # Perform the fit
         fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
-                                             p0=initial_guess,
+                                             p0=initial_peaks_fit_properties,
                                              kwargs={'sigma': (approx_var_gauss + approx_var_bg) ** 0.5})
 
         return [fit_result]
@@ -216,7 +220,7 @@ class GaussianWithBGFitting(PeakFit):
                 (maximal_channel - minimal_channel))
 
     @staticmethod
-    def gaussian(params, domain, spectrum, number_of_gaussians):
+    def gaussians(params, domain, number_of_gaussians):
         """
         number of Gaussian functions .
 
@@ -240,14 +244,11 @@ class GaussianWithBGFitting(PeakFit):
         xr.DataSet
             Gaussian plus background values.
         """
-        estimated_peaks = spectrum*9\0
+        estimated_peaks = xr.DataArray(data=domain*0, coords={'energy': domain})
         for i in range(number_of_gaussians):
-
-            std = (fwhm / (2 * np.sqrt(2 * np.log(2))))
-            gaussian = amplitude * 1 / ((2 * np.pi) ** 0.5 * std) * np.exp(-(1 / 2) * ((domain - mean) / std) ** 2)
-            erf_background = np.array([(math.erf(-((x - mean) / std)) + 1) for x in domain])
-            background = 0.5 * height_difference * erf_background + peak_baseline
-        return gaussian + erf_background + background
+            gaussian = 
+            estimated_peaks = estimated_peaks +
+        return 0
 
     @staticmethod
     def gaussian_with_bg(domain, amplitude, mean, fwhm, height_difference, peak_baseline):
