@@ -219,39 +219,22 @@ class GaussianWithBGFitting(PeakFit):
                 (fwhm_slice * fwhm_slice.coords['channel']).sum() / fwhm_slice.sum(),
                 (maximal_channel - minimal_channel))
 
-    @staticmethod
-    def gaussians(params, domain, number_of_gaussians):
-        """
-        number of Gaussian functions .
-
-        Parameters
-        ----------
-        domain: array-like
-         domain on which the gaussian is defined
-        amplitude: float
-         Amplitude of the Gaussian.
-        mean: float
-         Mean (center) of the Gaussian.
-        fwhm: float
-         Standard deviation/ (2 * np.sqrt(2 * np.log(2))) (width) of the Gaussian
-         this is half of the distance for which the Gaussian gives half of the maximum value.
-        height_difference: float
-        the height difference between the right and lef edges of the peak
-        peak_baseline: float
-        the baseline of the peaks
-        Returns
-        -------
-        xr.DataSet
-            Gaussian plus background values.
-        """
-        estimated_peaks = xr.DataArray(data=domain*0, coords={'energy': domain})
-        for i in range(number_of_gaussians):
-            gaussian = 
-            estimated_peaks = estimated_peaks +
-        return 0
+    def multiple_gaussian(self, lmf_parameters, domain):
+        number_of_gaussian = len(lmf_parameters) % 3 - 1
+        function = 0
+        bg_center = lmf_parameters['bg_center']
+        bg_height_difference = lmf_parameters['height_difference']
+        bg_baseline = lmf_parameters['baseline']
+        for i in range(number_of_gaussian):
+            amplitude = lmf_parameters[f'amplitude_{i}']
+            mean = lmf_parameters[f'mean_{i}']
+            fwhm = lmf_parameters[f'fwhm_{i}']
+            function = function + self.gaussian_with_bg(domain, amplitude, mean, fwhm,
+                                                        bg_height_difference, bg_baseline, bg_center)
+        return function
 
     @staticmethod
-    def gaussian_with_bg(domain, amplitude, mean, fwhm, height_difference, peak_baseline):
+    def gaussian_with_bg(domain, amplitude, mean, fwhm, bg_height_difference, bg_baseline, bg_center):
         """
         Gaussian function.
 
@@ -278,8 +261,8 @@ class GaussianWithBGFitting(PeakFit):
 
         std = (fwhm / (2 * np.sqrt(2 * np.log(2))))
         gaussian = amplitude * 1 / ((2 * np.pi) ** 0.5 * std) * np.exp(-(1 / 2) * ((domain - mean) / std) ** 2)
-        erf_background = np.array([(math.erf(-((x - mean) / std)) + 1) for x in domain])
-        background = 0.5 * height_difference * erf_background + peak_baseline
+        erf_background = np.array([(math.erf(-((x - bg_center) / std)) + 1) for x in domain])
+        background = 0.5 * bg_height_difference * erf_background + bg_baseline
         return gaussian + erf_background + background
 
     @staticmethod
