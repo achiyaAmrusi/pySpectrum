@@ -2,7 +2,7 @@
 import xarray as xr
 import numpy as np
 import math
-from uncertainties import ufloat, nominal_value, std_dev
+from uncertainties import ufloat, nominal_value
 from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
 
 
@@ -94,7 +94,7 @@ class Peak:
         # return the mean energy in the fwhm which is the energy center
         return (fwhm_slice * fwhm_slice.coords['channel']).sum() / fwhm_slice.sum(), (maximal_channel - minimal_channel)
 
-    def direct_sum_counts_under_fwhm(self):
+    def direct_sum_counts_under_fwhm(self, number_of_fwhm=1):
         """
         Calculate the sum of counts within the Full Width at Half Maximum (FWHM) of a peak.
 
@@ -114,11 +114,11 @@ class Peak:
         """
         # Calculate the peak domain and slice the peak
 
-        fit_parameter = self.gaussian_fit_parameters()
-        fwhm = fit_parameter['curvefit_coefficients'].sel(param='fwhm')
-        peak_mean = fit_parameter['curvefit_coefficients'].sel(param='mean')
-        minimal_channel = peak_mean - fwhm / 2
-        maximal_channel = peak_mean + fwhm / 2
+        # fit_parameter = self.gaussian_fit_parameters()
+        fwhm = self.estimated_resolution # fit_parameter['curvefit_coefficients'].sel(param='fwhm')
+        peak_mean = nominal_value(self.first_moment_method_center())# fit_parameter['curvefit_coefficients'].sel(param='mean')
+        minimal_channel = peak_mean - number_of_fwhm * (fwhm / 2)
+        maximal_channel = peak_mean + number_of_fwhm * (fwhm / 2)
         energy = self.peak.coords['channel']
         center_index = np.where(energy > peak_mean)[0][0]
         de = energy[center_index + 1] - energy[center_index]
@@ -135,7 +135,7 @@ class Peak:
         xr.DataSet
             Gaussian plus background parameters values and uncertainties.
         """
-        fit_params = GaussianWithBGFitting.single_gaussian_fitting(self.peak, [self.height_left - self.height_right,
+        fit_params = GaussianWithBGFitting.gaussian_fitting(self.peak, [self.height_left - self.height_right,
                                                                                self.height_right])
         return fit_params[0]
 
@@ -185,7 +185,7 @@ class Peak:
 
         # calculate the mean energy in the fwhm which is the energy center
         center = (fwhm_slice * fwhm_slice.coords['channel']).sum() / fwhm_slice.sum()
-        return nominal_value(center.values.item()), std_dev(center.values.item())
+        return center.values.item()
 
     def subtract_background(self):
         """
@@ -203,13 +203,19 @@ class Peak:
         height_difference = self.height_left-self.height_right
         peak_baseline = self.height_right
         approx_nominal_bg = 0.5 * nominal_value(height_difference) * erf + nominal_value(peak_baseline)
+        # i need to change the line above and check this -
+        # bg = 0.5 * height_difference * erf + peak_baseline
+        # nominal_bg = np.array([nominal_value(bg_val) for bg_val in bg])
+        # std_bg = np.array([std_dev(bg_val) for bg_val in bg])
+
         # background subtraction
         approx_nominal_gauss = self.peak - approx_nominal_bg
         # poisson error
         approx_std_gauss = abs(approx_nominal_gauss)**0.5
         # into an xarray
         peak_no_bg = np.array([ufloat(approx_nominal_gauss[i], approx_std_gauss[i]) for i in range(len(self.peak.values))])
-
+        # fix into -
+        # peak_no_bg = np.array([ufloat(approx_nominal_gauss[i], (approx_std_gauss[i]**2+std_bg**2)**(1/2)) for i in range(len(self.peak.values))])
         peak_no_bg = xr.DataArray(data=peak_no_bg, coords=self.peak.coords)
 
         return peak_no_bg

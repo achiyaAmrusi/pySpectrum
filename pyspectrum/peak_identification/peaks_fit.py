@@ -1,7 +1,6 @@
 import xarray as xr
 import numpy as np
 import math
-from pyspectrum.peak_identification.convolution import Convolution
 from uncertainties import nominal_value, std_dev
 import matplotlib.pyplot as plt
 
@@ -22,11 +21,9 @@ class PeakFit:
     returns the fit
     plot_fit: callable
     plot the fit from the results of fitting methods
-
     """
 
-    def __init__(self, peak_overlap: bool, fitting_method=None, plot_fit=None):
-        self.peak_overlap = peak_overlap
+    def __init__(self, fitting_method=None, plot_fit=None):
         self.fitting_method = fitting_method
         self.plot_fit = plot_fit
 
@@ -40,95 +37,22 @@ class PeakFit:
         the slice of the peak in the spectrum for the fit
         fitting_data: list
         data for the fitting, this is fit method dependent
-
         """
-        if self.peak_overlap:
-            num_of_peaks, properties = self.fitting_method(spectrum_slice, fitting_data)
-        else:
-            num_of_peaks = 1
-            properties = self.fitting_method(spectrum_slice, fitting_data)
+
+        num_of_peaks = 1
+        properties = self.fitting_method(spectrum_slice, fitting_data)
         return properties, num_of_peaks
 
 
 class GaussianWithBGFitting(PeakFit):
 
-    def __init__(self, peak_overlap):
-        if peak_overlap:
-            super().__init__(peak_overlap, self.gaussian_fitting_method_overlap, self.plot_gaussian_fit)
-        else:
-            super().__init__(peak_overlap, self.single_gaussian_fitting, self.plot_gaussian_fit)
+    def __init__(self):
+        super().__init__(self.gaussian_fitting, self.plot_gaussian_fit)
 
     @staticmethod
-    def gaussian_fitting_method_overlap(spectrum_slice: xr.DataArray, p0, convolution:Convolution):
+    def gaussian_fitting(spectrum_slice: xr.DataArray, p0):
         """
-        Function returns number fit of the peaks in the following way,
-        it takes spectrum and tries a fit of n gaussian using gaussian and background.
-        if its not passing the x**2 test we try with additional peak untill 6 peaks.
-        there shoud be a cutoff?
-
-         Fit multiple gaussian functions with background to a xarray pyspectrum.
-         The method is to try and fit n gaussian functions to the spectrum,
-          reduce the fitted functions from the spectrum and then check for a signal using find_peaks.
-          if a signal is detected the method tries to fit n+1 gaussian functions to the peak
-
-        Parameters
-        ----------
-        spectrum_slice: xarray.DataArray
-          The pyspectrum with 'x' as the only coordinate.
-        p0 : list
-          parameters for the fit. p0 = [fwhm, counts_from_the_left, counts_from_the_right]
-        Returns
-        -------
-         - fit_params: tuple
-             The tuple containing the fit parameters (amplitude, mean, stddev) and the covariance matrix.
-             :param convolution:
-         """
-        # define the coordinate name
-        coord_name = list(spectrum_slice.coords.keys())[0]
-        initial_peaks_fit_properties = []
-        spectrum_slice = spectrum_slice.rename({spectrum_slice.coords[coord_name].name: 'channel'})
-        spectrum_subtracted = spectrum_slice
-        num_of_peaks = 1
-        while snr_flag:
-            # Initial guess for fit parameters
-
-            estimated_amplitude, estimated_center, estimated_fwhm = GaussianWithBGFitting.gaussian_initial_guess_estimator(
-                spectrum_slice)
-            # nominal guess for curvefit
-            initial_peaks_fit_properties.append({'amplitude': nominal_value(estimated_amplitude.item()),
-                                                 'mean': nominal_value(estimated_center.item()),
-                                                 'fwhm': estimated_fwhm,
-                                                 'height_difference': nominal_value(p0[0]),
-                                                 'peak_baseline': nominal_value(p0[1])})
-            # calculate the std of the data for sigma in curvefit
-            std = (estimated_fwhm / (2 * np.sqrt(2 * np.log(2))))
-            # approximate the gaussian part and the background part of the peak
-            erf = np.array(
-                [(math.erf(-(x - initial_peaks_fit_properties['mean']) / std) + 1) for x in
-                 spectrum_slice.coords['channel'].to_numpy()])
-            spectrum_subtracted = spectrum_slice# - peaks_from_properties(spectrum_slice.channel, initial_peaks_fit_properties)
-            conv_n_sigma_spectrum = convolution.convolution(
-                spectrum_subtracted.energy_calibration(spectrum_subtracted.channels),
-                spectrum_subtracted.counts)
-            if not any(conv_n_sigma_spectrum>2*convolution.n_sigma_threshold):
-                snr_flag = False
-
-        approx_nominal_bg = 0.5 * initial_peaks_fit_properties['height_difference'] * erf + initial_peaks_fit_properties['peak_baseline']
-        approx_nominal_gauss = spectrum_slice - approx_nominal_bg
-        approx_var_bg = ((0.5 * std_dev(p0[0]) * erf) ** 2 + std_dev(p0[1]) ** 2)
-        approx_var_gauss = abs(approx_nominal_gauss)
-
-        # Perform the fit
-        fit_result = spectrum_slice.curvefit('channel', GaussianWithBGFitting.gaussian_with_bg,
-                                             p0=initial_peaks_fit_properties,
-                                             kwargs={'sigma': (approx_var_gauss + approx_var_bg) ** 0.5})
-
-        return [fit_result]
-
-    @staticmethod
-    def single_gaussian_fitting(spectrum_slice: xr.DataArray, p0):
-        """
-         Fit a Gaussian to an xarray pyspectrum.
+        Fit a Gaussian to an xarray pyspectrum.
         If the fit fails return False
         Parameters
         ----------
@@ -178,13 +102,13 @@ class GaussianWithBGFitting(PeakFit):
             # if the fit didn't succeed
             return False
         # if the baseline is negative or the height difference is negative it is not a peak
-        negative_baseline = fit_result['curvefit_coefficients'].sel(param='peak_baseline').item() < \
-                            - fit_result['curvefit_covariance'].sel(cov_i='peak_baseline', cov_j='peak_baseline')
-        negative_height_difference = fit_result['curvefit_coefficients'].sel(param='height_difference').item() < \
-                                     - fit_result['curvefit_covariance'].sel(cov_i='height_difference',
-                                                                             cov_j='height_difference')
-        if negative_baseline or negative_height_difference:
-            return False
+        negative_baseline = fit_result['curvefit_coefficients'].sel(param='bg_baseline').item() < \
+                            - fit_result['curvefit_covariance'].sel(cov_i='bg_baseline', cov_j='bg_baseline')
+        negative_height_difference = fit_result['curvefit_coefficients'].sel(param='bg_height_difference').item() < \
+                                     - fit_result['curvefit_covariance'].sel(cov_i='bg_height_difference',
+                                                                             cov_j='bg_height_difference')
+#        if negative_baseline or negative_height_difference:
+#            return False
         return [fit_result]
 
     @staticmethod
@@ -219,20 +143,6 @@ class GaussianWithBGFitting(PeakFit):
                 (fwhm_slice * fwhm_slice.coords['channel']).sum() / fwhm_slice.sum(),
                 (maximal_channel - minimal_channel))
 
-    def multiple_gaussian(self, lmf_parameters, domain):
-        number_of_gaussian = len(lmf_parameters) % 3 - 1
-        function = 0
-        bg_center = lmf_parameters['bg_center']
-        bg_height_difference = lmf_parameters['height_difference']
-        bg_baseline = lmf_parameters['baseline']
-        for i in range(number_of_gaussian):
-            amplitude = lmf_parameters[f'amplitude_{i}']
-            mean = lmf_parameters[f'mean_{i}']
-            fwhm = lmf_parameters[f'fwhm_{i}']
-            function = function + self.gaussian_with_bg(domain, amplitude, mean, fwhm,
-                                                        bg_height_difference, bg_baseline, bg_center)
-        return function
-
     @staticmethod
     def gaussian_with_bg(domain, amplitude, mean, fwhm, bg_height_difference, bg_baseline, bg_center):
         """
@@ -249,10 +159,11 @@ class GaussianWithBGFitting(PeakFit):
         fwhm: float
          Standard deviation/ (2 * np.sqrt(2 * np.log(2))) (width) of the Gaussian
          this is half of the distance for which the Gaussian gives half of the maximum value.
-        height_difference: float
+        bg_height_difference: float
         the height difference between the right and lef edges of the peak
-        peak_baseline: float
+        bg_baseline: float
         the baseline of the peaks
+        bg_center: float
         Returns
         -------
         xr.DataSet
@@ -280,12 +191,15 @@ class GaussianWithBGFitting(PeakFit):
         mean = fit_properties['curvefit_coefficients'].sel(param='mean').item()
         amplitude = fit_properties['curvefit_coefficients'].sel(param='amplitude').item()
         fwhm = fit_properties['curvefit_coefficients'].sel(param='fwhm').item()
-        height_difference = fit_properties['curvefit_coefficients'].sel(param='height_difference').item()
-        peak_baseline = fit_properties['curvefit_coefficients'].sel(param='peak_baseline').item()
+        height_difference = fit_properties['curvefit_coefficients'].sel(param='bg_height_difference').item()
+        peak_baseline = fit_properties['curvefit_coefficients'].sel(param='bg_baseline').item()
+        background_center = fit_properties['curvefit_coefficients'].sel(param='bg_center').item()
         peak = GaussianWithBGFitting.gaussian_with_bg(domain,
                                                       amplitude,
                                                       mean,
                                                       fwhm,
                                                       height_difference,
-                                                      peak_baseline)
+                                                      peak_baseline,
+                                                      background_center)
         plt.plot(domain, peak, color='red')
+

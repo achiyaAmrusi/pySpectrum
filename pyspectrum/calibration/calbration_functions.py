@@ -2,7 +2,10 @@ import numpy as np
 
 
 def germanium_fwhm(energy, a, b, c):
-    return a + b*np.sqrt(energy + abs(c) * energy**2)
+    """ calibration function of the form of
+    E(channel) = a + b*np.sqrt(energy + abs(c) * energy**2)
+    """
+    return a + b*np.sqrt(np.abs(energy) + abs(c) * energy**2)
 
 
 def standard_fwhm_generator(parm):

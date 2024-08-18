@@ -7,6 +7,9 @@ from .calbration_functions import germanium_fwhm, standard_fwhm_generator
 
 class Calibration:
     """
+    This class is a tool to calibrate detector spectra fwhm and energy.
+    Function get a spectrum with know peaks, the known energies and estimated domain for the peaks in those energies.
+    Using these the function can fit the energy and fwhm calibrations.
 
     """
 
@@ -19,6 +22,10 @@ class Calibration:
         self.fwhm_generator = fwhm_generator
 
     def generate_calibration(self, degree_of_poly: int, p0=None):
+        """
+        function optimize the energy calibration polynomial and proximate fwhm function.
+
+        """
         if p0 is None:
             p0 = [0, 0.02, 0]
         peaks_center = []
