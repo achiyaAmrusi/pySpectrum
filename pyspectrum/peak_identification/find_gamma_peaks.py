@@ -1,25 +1,30 @@
 import numpy as np
+import xarray as xr
+from scipy.signal import find_peaks
+from pyspectrum.peak_identification.utils import gaussian
 from pyspectrum.peak_identification.convolution import Convolution
 from pyspectrum.peak.peak import Peak
 from uncertainties import ufloat
 
 
-class FindPeaks:
+class FindPeaksDomain:
     """
-    Find peaks is a tool for general peak finding using the convolution method.
-    the purpose of the work is to be a tool for gamma spectroscopy but this can be generalized for other peaks.
-    FindPeaks take a Spectrum and using the calibration to find the gamma and xray peaks in the spectrum
-    The code uses method represents in the papers[1,2].
+    FindPeaksDomain is a tool for general peak finding using the convolution method.
+    The purpose of the work is to be a tool for gamma spectroscopy but this can be generalized for other peaks.
+    FindPeaks take a Spectrum and using the calibration to find the gamma and xarray peaks in the spectrum
+    The code uses methods which are based on the papers[1,2].
 
     Attributes:
     ----------
     spectrum: Spectrum
      The spectrum that FindPeaks search and return peaks in.
     convolution: Convolution
-     The convolution of the spectrum with the kernel according to []
-     This kernel_convolution is calculated only once due to the time intensive cost of calculating it
-    fitting_type: 'str'
-    the type of the fitting method. for now there is only 'HPGe_spectroscopy'.
+     A convolution method to convolve the spectrum with a changing kernel.
+     The method is based con/conv_std_dev so i might change this parameter from Convolution to np.ndarray of the ratio
+     todo: Spectrum includes a fwhm calibration and thus i can make covolution/
+      on my own in the function and it does not need to be a parameter
+    n_sigma_threshold: float
+        n_sigma is the cutoff for con/conv_std_dev to decide if the signal is enough above the noise to contain a peak
 
     Methods:
     -------
@@ -27,10 +32,6 @@ class FindPeaks:
       Constructor method to initialize a FindPeaks instance.
 
     find_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
-      find peaks in the gamma spectrum given the acceptable statistical error
-      and the fwhm tolerance from the given fwhm function in spectrum(Spectrum.fwhm_calibration)
-
-    `find_all_peaks(self, stat_error=0.05, fwhm_tol_min=0.5)`:
       find peaks in the gamma spectrum given the acceptable statistical error
       and the fwhm tolerance from the given fwhm function in spectrum(Spectrum.fwhm_calibration)
 
@@ -184,3 +185,70 @@ class FindPeaks:
         return Peak(peak, peak_bg_l, peak_bg_r)
 
 
+class FindPeaksCenters:
+    """
+    For a given gamma spectrum slice, with approximately constant resolution, this class allows to find local maxima.
+     The method is traditional and uses Marsicotti method for finding the peak.
+     The method is implemented using smoothing method and scipy find peaks.
+    """
+    def __init__(self, spectrum_slice:xr.DataArray, smoothing_sigma=None,  prominence=0,  **kwargs):
+        """
+        Constructor method to initialize a FindPeaksCenters instance
+         The spectrum can be smoothed using smoothing_sigma.
+          Also, the peak prominance can liited to include only peaks from certain statistical accuracy.
+           other limitation on scipy find_peaks can be implementwed via kwargs.
+        Also the
+        todo: optimize smoothing sigma for peaks separation specifically in gamma, read the paper thoroughly
+        Parameters
+        ----------
+        spectrum_slice: xr.DataArray
+         a spectrum slice of the peaks (The slice should be above SNR).
+        smoothing_sigma: The approximated value of the fwhm in the slice
+         the smoothing is the std.dev of the convolutions gaussian
+        prominence: the minimal prominence of the peaks expected to locate
+        It can be calculated from the statistical accuracy expected -
+        minimal_counts_in_peak = 1/ statistical_accuracy ** 2
+        minimal_prominence = minimal_counts_in_peak / (
+                                                        0.761438079 * np.sqrt(2 * np.pi) * (
+                                                        est_fwhm / (2 * np.sqrt(2 * np.log(2)))))
+        """
+        self.spectrum = spectrum_slice
+        self.smoothing_sigma = smoothing_sigma
+        self.minimal_prominence = prominence
+        self.kwargs = kwargs
+
+    def smooth(self):
+        """
+        Function smooth the spectrum using convolution with gaussian with sigma of smoothing_sigma
+        """
+        # different domain for even or odd length spectrum
+        add_bin = 0
+        if len(self.spectrum.energy) % 2 == 0:
+            add_bin = 1
+
+        kernel = gaussian(self.spectrum.energy,
+                          1,
+                          self.spectrum.energy.mean(),
+                          self.smoothing_sigma)
+        kernel = kernel / kernel.sum()
+        smooth_spectrum = np.convolve(self.spectrum.values, kernel, mode='full')
+
+        return xr.DataArray(smooth_spectrum[int(len(self.spectrum.values) / 2-add_bin):-int(len(self.spectrum.values) / 2)],
+                            coords=self.spectrum.coords)
+
+    def find_peaks_center(self):
+        """
+        Function smooth the spectrum if needed and than find the peaks using scipy
+        """
+        if self.smoothing_sigma is not None:
+            spectrum = self.smooth()
+        else:
+            spectrum = self.spectrum
+        (center_indices, _) = find_peaks(x=spectrum, prominence=self.minimal_prominence, **self.kwargs)
+        return spectrum.energy[center_indices].values
+
+    def __call__(self):
+        """
+        Function smooth the spectrum if needed and than find the peaks using scipy
+        """
+        return self.find_peaks_center()

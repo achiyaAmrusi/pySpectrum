@@ -2,15 +2,16 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from uncertainties import ufloat
-from pyspectrum.peak_identification.find_gamma_peaks import FindPeaks
+from pyspectrum.peak_identification.find_gamma_peaks import FindPeaksDomain, FindPeaksCenters
 from pyspectrum.peak_identification.convolution import Convolution
-from pyspectrum.peak_identification.new_peaks_fit import  GaussianWithBGFitting
+from pyspectrum.peak_fitting.std_gaussian_fitting import GaussianWithBGFitting
 from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev
 
 
 class Spectrum:
     """
-        Represents a spectrum with methods for data manipulation and analysis.
+        Represents a spectrum with the methods for data analysis.
+        The class is yet not compatible with xarray but is heavily relied on it.
 
         Parameters
         ----------
@@ -25,29 +26,42 @@ class Spectrum:
 
         Attributes
         ----------
-        counts (numpy.ndarray): Array of counts.
-        channels (numpy.ndarray): Array of channels.
-        energy_calibration (numpy.poly1d): Polynomial for energy calibration.
-        fwhm_calibration (function): function for fwhm calibration channel->fwhm.
+        counts (numpy.ndarray):
+         Array of counts.
+        channels (numpy.ndarray):
+         Array of channels.
+        energy_calibration (numpy.poly1d):
+         Polynomial for energy calibration.
+        fwhm_calibration (function):
+         function for fwhm calibration channel->fwhm.
 
         Methods
         -------
-        `__init__(self, counts, channels, energy_calibration_poly=np.poly1d([1, 0]))`
+        `__init__(self, counts, channels, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None)`
         Constructor method to initialize a Spectrum instance.
 
-        `xr_spectrum(self, errors=False)`
-        Returns the spectrum in xarray format. If errors is True, the xarray values will be in ufloat format.
+        `xr_spectrum(self)`
+        Returns the spectrum in xarray format.
 
         `calibrate_energy(self, energy_calibration)`
         change the energy calibration polynom of Spectrum
-
+        todo: This might be redundant with the possibility of changing the calibration directly
         `calibrate_fwhm(self, fwhm_calibration)`
         change the fwhm calibration polynom of Spectrum
-
+        todo: This might be redundant with the possibility of changing the calibration directly
         `from_file(file_path, energy_calibration_poly=np.poly1d([1, 0]), fwhm_calibration=None, sep='\t',
                   **kwargs)`
         load spectrum from a file which has 2 columns,
         first column is the channels/energy and the second is counts, in te end the function return Spectrum
+
+        'fit_peaks(self, fitting_method=GaussianWithBGFitting(), zero_area_function=gaussian_2_dev, n_sigma_threshold=4,
+                  refind_peaks_flag=False, minimal_statistical_accuracy=0.05, smoothing_factor=4, **kwargs)'
+        fit all the peaks found in a spectrum.
+
+        'plot_all_peaks(self, fitting_method=GaussianWithBGFitting(), zero_area_function=gaussian_2_dev,
+                       n_sigma_threshold=4, minimal_statistical_accuracy=0.05, smoothing_factor=4,
+                       refind_peaks_flag=False, **kwargs)'
+         fit all the peaks found in a spectrum and plot the fit with the spectrum.
         """
 
     # Constructor method
@@ -64,7 +78,7 @@ class Spectrum:
         self.energy_calibration = energy_calibration_poly
         self.fwhm_calibration = fwhm_calibration
         self._convolution = None
-        self._find_peaks = None
+        self._find_peak_domain = None
 
     def xr_spectrum(self):
         """
@@ -157,7 +171,7 @@ class Spectrum:
         Returns
         -------
         Spectrum
-        the spectrum from the files with the given parameters
+        The spectrum from the files with the given parameters
         """
         # Load the pyspectrum file in form of DataFrame
 
@@ -167,13 +181,12 @@ class Spectrum:
                         fwhm_calibration)
 
     def fit_peaks(self, fitting_method=GaussianWithBGFitting(), zero_area_function=gaussian_2_dev, n_sigma_threshold=4,
-                  refind_peaks_flag=False):
+                  minimal_statistical_accuracy=0.05, smoothing_factor=4, refind_peaks_flag=False, **kwargs):
         """
-        The function finds and fit peaks automatically.
-        function scan the spectral_n_sigma vector which is kernel_convolution/kernel_convolution_std
-        and search for when the value is larger than n_sigma_threshold.
-         if the value is above n_sigma_threshold, it calls peak_domain.
-        the peaks are than fitted and returned as Peaks and Peaks properties
+        The function finds peaks domains, detect local maxima, and fit peaks automatically.
+        function use FindPeaksDomain to find the domain of peaks using convolution method.
+        In these domains the function use FindPeaksCenter class to detect the peaks centers in the domain.
+        The peaks are than fitted using the fitting method given and returned as Peaks and Peaks properties
 
         Parameters
         ----------
@@ -182,15 +195,21 @@ class Spectrum:
         zero_area_function: callable
         function from pyspectrum.peak_identification.zero_area_functions
         n_sigma_threshold: float
-        the signal-to-noise ratio cutoff for peak identification. For rough recognition in gamma spectroscopy 4 is good choice.
+        the signal-to-noise ratio cutoff for peak identification.
+         For rough recognition in gamma spectroscopy 4 is good choice.
+        minimal_statistical_accuracy: float
+        number between 0 - 1 where it represents the poission error on the peak area.
+        this value is related directly to the prominence but is more intuitive regarding spectroscopy
+        smoothing_factor: float
+        the factor of how much to smooth the detected slices in order to find there peak centers
         refind_peaks_flag: bool
         to recalculate findpeaks
         Returns
         -------
-        - tuple
-        peaks_properties: list
-        a list of the properties of each peak found.
-        peak properties  =  properties of fit curve in xarray
+        peaks_properties: DataArray
+        a list of the fit properties of each peak found.
+        - peaks_valid_domain: list
+        a list of all the domains in which the eaks where found
 
         References
         ----------
@@ -203,10 +222,11 @@ class Spectrum:
         """
         # initialize the find peaks if it wasn't initialized yet
         # Not that right now it is problematic to refind peaks with different functions
-        if (self._convolution is None or self._find_peaks is None) or refind_peaks_flag:
+        if (self._convolution is None or self._find_peak_domain is None) or refind_peaks_flag:
             self._convolution = Convolution(self.fwhm_calibration, zero_area_function)
-            self._find_peaks = FindPeaks(self, self._convolution, n_sigma_threshold)
-        peaks_domain = self._find_peaks.find_domains_above_snr()
+            self._find_peak_domain = FindPeaksDomain(self, self._convolution, n_sigma_threshold)
+
+        peaks_domain = self._find_peak_domain.find_domains_above_snr()
         spectrum = self.counts
         peaks_properties = []
         peaks_valid_domain = []
@@ -218,7 +238,7 @@ class Spectrum:
 
             # the background levels from left and right
             if (peak_domain[0] - round(ch_fwhm / 2)) < 0:
-                peak_domain_left = peak_domain[0] if peak_domain[0] > 0 else peak_domain[0]+1
+                peak_domain_left = peak_domain[0] if peak_domain[0] > 0 else peak_domain[0] + 1
                 peak_bg_l = ufloat(spectrum[0:peak_domain_left].mean(),
                                    spectrum[0:peak_domain_left].std())
             else:
@@ -226,29 +246,44 @@ class Spectrum:
                                    spectrum[peak_domain[0] - round(ch_fwhm / 2):peak_domain[0]].std())
 
             if (peak_domain[1] + round(ch_fwhm / 2)) > len(spectrum):
-                peak_domain_right = peak_domain[1] if peak_domain[1] < len(spectrum) else peak_domain[1]-1
+                peak_domain_right = peak_domain[1] if peak_domain[1] < len(spectrum) else peak_domain[1] - 1
                 peak_bg_r = ufloat(spectrum[peak_domain_right:len(spectrum)].mean(),
                                    spectrum[peak_domain_right:len(spectrum)].std())
             else:
                 peak_bg_r = ufloat(spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].mean(),
                                    spectrum[peak_domain[1]:peak_domain[1] + round(ch_fwhm / 2)].std())
 
-            # the peak
+            # extract the peak slice and the backgrond height
             peak = self.xr_spectrum().sel(
                 energy=slice(self.energy_calibration(peak_domain[0]),
                              self.energy_calibration(peak_domain[1])))
             # fit the peak using the fitting method
             peak_background_data = [peak_bg_l - peak_bg_r, peak_bg_r]
 
-            fit_properties = fitting_method.peak_fit(peak, peak_background_data)
+            # fit the peak slice
+            resolution = self.fwhm_calibration(peak.energy.values[0]) / (2 * np.sqrt(2 * np.log(2)))
+            minimal_counts_in_peak = 1 / minimal_statistical_accuracy ** 2
+            minimal_prominence = minimal_counts_in_peak / (0.761438079 * np.sqrt(2 * np.pi) * resolution)
+            find_peaks_centers = FindPeaksCenters(peak, resolution / smoothing_factor, minimal_prominence)
+            estimated_peaks_centers_in_domain = find_peaks_centers()
 
+            # fit only if peak center was found, otherwise it is just somthing above snr
+            if len(estimated_peaks_centers_in_domain) > 0:
+                fit_properties = fitting_method.fit(peak,
+                                                    peaks_centers=estimated_peaks_centers_in_domain,
+                                                    estimated_fwhm=self.fwhm_calibration(peak.energy[0].values),
+                                                    background_parameters=peak_background_data, **kwargs)
+            else:
+                fit_properties = False
             # save all the peak found in the domain
             if fit_properties:
                 peaks_properties.append(fit_properties)
                 peaks_valid_domain.append(peak_domain)
         return peaks_properties, peaks_valid_domain
 
-    def plot_all_peaks(self, fitting_method=GaussianWithBGFitting(), zero_area_function=gaussian_2_dev, n_sigma_threshold=4, refind_peaks_flag=False):
+    def plot_all_peaks(self, fitting_method=GaussianWithBGFitting(), zero_area_function=gaussian_2_dev,
+                       n_sigma_threshold=4, minimal_statistical_accuracy=0.05, smoothing_factor=4,
+                       refind_peaks_flag=False, **kwargs):
         """plot the peaks found in find_peaks via fitting method
 
         Parameters
@@ -258,11 +293,22 @@ class Spectrum:
         zero_area_function: callable
         function from pyspectrum.peak_identification.zero_area_functions
         n_sigma_threshold: float
-        the signal-to-noise ratio cutoff for peak identification. For rough recognition in gamma spectroscopy 4 is good choice.
+        the signal-to-noise ratio cutoff for peak identification.
+         For rough recognition in gamma spectroscopy 4 is good choice.
+        minimal_statistical_accuracy: float
+         the fraction required for the statistical precision of the peak assuming that the accuracy goes like the
+         square root of the counts in the peak
         refind_peaks_flag: bool
         to recalculate findpeaks
-       """
-        peaks_properties, peaks_domain = self.fit_peaks(fitting_method, zero_area_function, n_sigma_threshold, refind_peaks_flag)
+        smoothing_factor: float
+        the factor of how much to smooth the detected slices in order to find there peak centers
+        """
+        peaks_properties, peaks_domain = self.fit_peaks(fitting_method=fitting_method,
+                                                        zero_area_function=zero_area_function,
+                                                        n_sigma_threshold=n_sigma_threshold,
+                                                        minimal_statistical_accuracy=minimal_statistical_accuracy,
+                                                        refind_peaks_flag=refind_peaks_flag,
+                                                        smoothing_factor=smoothing_factor, **kwargs)
         self.xr_spectrum().plot()
         for i, peak in enumerate(peaks_properties):
             energy_domain = self.energy_calibration(np.arange(peaks_domain[i][0], peaks_domain[i][1], 1))

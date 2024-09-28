@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 import math
 from uncertainties import ufloat, nominal_value
-from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
+from pyspectrum.peak_fitting.std_gaussian_fitting import GaussianWithBGFitting
 
 
 class Peak:
@@ -57,7 +57,7 @@ class Peak:
         # peak variable is channel
         self.peak = peak_xarray.rename({peak_xarray.dims[0]: 'channel'})
         # initialization
-        _, self.estimated_center, self.estimated_resolution = GaussianWithBGFitting.gaussian_initial_guess_estimator(self.peak)
+        self.estimated_center, self.estimated_resolution = Peak.center_fwhm_estimator(self.peak)
 
         if not (isinstance(ubackground_l, type(ufloat(0, 0)))):
             raise TypeError("Variable ubackground_l must be of type ufloat.")
@@ -67,7 +67,8 @@ class Peak:
             raise TypeError("Variable ubackground_r must be of type ufloat.")
         self.height_right = ubackground_r
 
-    def center_fwhm_estimator(self):
+    @staticmethod
+    def center_fwhm_estimator(peak: xr.DataArray):
         """
         estimate the center of the peak
         the function operate by the following order -
@@ -81,7 +82,6 @@ class Peak:
             center, fwhm
 
           """
-        peak = self.peak
         maximal_count = peak.max()
         # Calculate the half-maximum count
         half_max_count = maximal_count / 2
@@ -135,9 +135,11 @@ class Peak:
         xr.DataSet
             Gaussian plus background parameters values and uncertainties.
         """
-        fit_params = GaussianWithBGFitting.gaussian_fitting(self.peak, [self.height_left - self.height_right,
-                                                                               self.height_right])
-        return fit_params[0]
+        fit_params = GaussianWithBGFitting.gaussian_fitting(self.peak, peaks_centers= [self.estimated_center],
+                                                            estimated_fwhm=self.estimated_resolution,
+                                                            background_parameters=[self.height_left - self.height_right,
+                                                                                   self.height_right])
+        return fit_params
 
     def fit_method_counts_under_fwhm(self):
         """Calculate the sum of counts within the Full Width at Half Maximum (FWHM) of a peak.

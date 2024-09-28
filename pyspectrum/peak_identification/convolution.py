@@ -4,25 +4,21 @@ from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev
 
 class Convolution:
     """
-    Tool to convolve a function (domain and range) with a kernel of zero area function.
-    TODO: change the convolution method to do the convolution. in order to save time i can calculate the kernel
-          on twice the domain. than there is no need to call kernel in each step of the loop. Instead, I can each
-          step of the loop just cut the relevant kernel part
+    Tool to convolve a function (domain and range) with a zero area function kernel which has a changing width.
+
     Parameters:
     ----------
      width: Callable
      for a given bin, width returns the approximated width of the peaks
      zero_area_function: Callable
-     A function that takes a domain of bins, a bin (in the domain) which is the center, and the threshold for
-     n_sigma such that the if the value of the convolution(bin) > n_sigma there is a peak in bin
-
+     a callable function of a zero area function which means that the integral over the domain gives 0
     Attributes:
     ----------
     width: Callable
          for a given bin returns the approximated width of the peaks
      zero_area_function: Callable
-         a function that takes a domain of bins, a bin (in the domain) which is the center, and the threshold for
-     n_sigma such that the if the value of the convolution(bin) > n_sigma there is a peak in bin
+     a callable function of a zero area function which means that the integral over the domain gives 0
+    The function takes a domain, center and width.
 
      Methods:
      -------
@@ -39,13 +35,13 @@ class Convolution:
     def __init__(self, width, zero_area_function=gaussian_2_dev):
         """
         Constructor method to initialize a Convolution instance
+
         Parameters
         ----------
         width: Callable
             for a given bin returns the approximated width of the peaks
         zero_area_function: Callable
         a zero area function for the convolution
-
         """
         self.width = width
         self.zero_area_function = zero_area_function
@@ -68,10 +64,9 @@ class Convolution:
         """
         return self.zero_area_function(domain, center, self.width(center))
 
-    def convolution(self, domain: np.array, function_range: np.array):
+    def convolution(self, domain: np.ndarray, function_range: np.ndarray):
         """
         calculate the function convolution with the kernel - zero area function
-
         Parameters
         ----------
         domain: np.ndarray

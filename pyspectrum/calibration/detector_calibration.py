@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-from pyspectrum.peak_identification.peaks_fit import GaussianWithBGFitting
+from pyspectrum.peak import Peak
 from scipy.optimize import curve_fit
 from .calbration_functions import germanium_fwhm, standard_fwhm_generator
 
@@ -32,7 +32,7 @@ class Calibration:
         peaks_fwhm = []
         for domain in self.photopeak_domains:
             peak = self.spectrum.sel(channel=slice(domain[0], domain[1]))
-            _, center, fwhm_ch = GaussianWithBGFitting.gaussian_initial_guess_estimator(peak)
+            center, fwhm_ch = Peak.center_fwhm_estimator(peak)
             peaks_center.append(center)
             peaks_fwhm.append(fwhm_ch)
 
