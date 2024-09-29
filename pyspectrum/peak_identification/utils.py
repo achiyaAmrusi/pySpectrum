@@ -22,4 +22,3 @@ def gaussian(x, amplitude, mean, fwhm):
         Gaussian values in x.
     """
     return amplitude * np.exp(-(1/2)*((x-mean) / (fwhm/2.35482))**2)
-

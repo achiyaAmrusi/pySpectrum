@@ -83,12 +83,6 @@ class Spectrum:
     def xr_spectrum(self):
         """
         Return pyspectrum in xarray format
-        If errors is True, the xarray values will be in ufloat format.
-
-        Parameters
-        ----------
-        errors (bool): If True, the xarray values will be in ufloat format, including counts error(no option to
-        time normalize yet).
 
         Returns
         -------
@@ -101,7 +95,7 @@ class Spectrum:
     def calibrate_energy(self, energy_calibration):
         """
         change the energy calibration polynom of Spectrum
-
+        todo: I think the method is pointless
         Parameters
         ----------
         energy_calibration: np.poly1d
@@ -114,7 +108,7 @@ class Spectrum:
     def calibrate_fwhm(self, fwhm_calibration):
         """
         change the energy calibration polynom of Spectrum
-
+        todo: I think the method is pointless
         Parameters
         ----------
          fwhm_calibration: Callable
@@ -167,7 +161,8 @@ class Spectrum:
          spectrum in form of a dataframe such that the column are -  'channel', 'counts'
         energy_calibration_poly: numpy.poly1d([a, b])
         the energy calibration of the detector
-         fwhm_calibration:a function that given energy/channel(first raw in file) returns the fwhm
+         fwhm_calibration: Callable
+         a function that given energy/channel(first raw in file) returns the fwhm
         Returns
         -------
         Spectrum
@@ -204,6 +199,8 @@ class Spectrum:
         the factor of how much to smooth the detected slices in order to find there peak centers
         refind_peaks_flag: bool
         to recalculate findpeaks
+        kwargs:
+        parameters for the fitting method
         Returns
         -------
         peaks_properties: DataArray
@@ -284,7 +281,8 @@ class Spectrum:
     def plot_all_peaks(self, fitting_method=GaussianWithBGFitting(), zero_area_function=gaussian_2_dev,
                        n_sigma_threshold=4, minimal_statistical_accuracy=0.05, smoothing_factor=4,
                        refind_peaks_flag=False, **kwargs):
-        """plot the peaks found in find_peaks via fitting method
+        """
+        plot the peaks found in find_peaks via fitting method
 
         Parameters
         ----------
@@ -302,6 +300,8 @@ class Spectrum:
         to recalculate findpeaks
         smoothing_factor: float
         the factor of how much to smooth the detected slices in order to find there peak centers
+        kwargs:
+        parameters for the fitting method
         """
         peaks_properties, peaks_domain = self.fit_peaks(fitting_method=fitting_method,
                                                         zero_area_function=zero_area_function,

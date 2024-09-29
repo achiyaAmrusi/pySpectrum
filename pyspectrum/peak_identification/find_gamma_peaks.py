@@ -69,7 +69,8 @@ class FindPeaksDomain:
         self.spectrum = spectrum
         self.convolution = convolution
         self.n_sigma_threshold = n_sigma_threshold
-        _, _, self.conv_n_sigma_spectrum = convolution.convolution(spectrum.energy_calibration(spectrum.channels), spectrum.counts)
+        _, _, self.conv_n_sigma_spectrum = convolution.convolution(spectrum.energy_calibration(spectrum.channels),
+                                                                   spectrum.counts)
 
     def peaks_domain(self, value_in_domain):
         """
@@ -191,7 +192,7 @@ class FindPeaksCenters:
      The method is traditional and uses Marsicotti method for finding the peak.
      The method is implemented using smoothing method and scipy find peaks.
     """
-    def __init__(self, spectrum_slice:xr.DataArray, smoothing_sigma=None,  prominence=0,  **kwargs):
+    def __init__(self, spectrum_slice: xr.DataArray, smoothing_sigma=None,  prominence=0,  **kwargs):
         """
         Constructor method to initialize a FindPeaksCenters instance
          The spectrum can be smoothed using smoothing_sigma.
@@ -238,7 +239,7 @@ class FindPeaksCenters:
 
     def find_peaks_center(self):
         """
-        Function smooth the spectrum if needed and than find the peaks using scipy
+        Function smooth the spectrum if needed and then find the peaks using scipy
         """
         if self.smoothing_sigma is not None:
             spectrum = self.smooth()
@@ -249,6 +250,6 @@ class FindPeaksCenters:
 
     def __call__(self):
         """
-        Function smooth the spectrum if needed and than find the peaks using scipy
+        Function smooth the spectrum if needed and then find the peaks using scipy
         """
         return self.find_peaks_center()

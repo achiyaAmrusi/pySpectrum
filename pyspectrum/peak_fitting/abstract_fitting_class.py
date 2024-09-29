@@ -6,6 +6,7 @@ class PeakFit(ABC):
     """
     Abstract base class for peak fitting methods.
     Any peak fitting class must implement the `fit` and `plot_fit` methods.
+    Must be implemented by subclasses.
     Methods
     ----------
     fit: callable
@@ -20,8 +21,7 @@ class PeakFit(ABC):
     def fit_type(self):
         """
         Abstract property for the type of fitting (e.g., Gaussian, Lorentzian).
-        Must be implemented by subclasses.
-        """
+         """
         pass
 
     @staticmethod

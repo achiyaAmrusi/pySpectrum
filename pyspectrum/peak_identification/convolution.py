@@ -5,7 +5,6 @@ from pyspectrum.peak_identification.zero_area_functions import gaussian_2_dev
 class Convolution:
     """
     Tool to convolve a function (domain and range) with a zero area function kernel which has a changing width.
-
     Parameters:
     ----------
      width: Callable
@@ -22,13 +21,13 @@ class Convolution:
 
      Methods:
      -------
-     `__init__(self, xarray.DataArray)`
+     `__init__(self, width, zero_area_function=gaussian_2_dev)`
        Constructor method to initialize a Convolution instance.
-     `kernel(self, domain: np.array, center: float)`
+     `kernel(self, domain: np.ndarray, center: float)`
          Generate the kernel function around the given center value(channel)
          the kernel width is defined in spectrum.fwhm_calibration.
          The kernel function here is the second derivative of gaussian
-     convolution(self, domain: np.array, function_range: np.array)
+     convolution(self, domain: np.ndarray, function_range: np.ndarray)
          calculate the function convolution with the kernel - zero area function
     """
 
@@ -53,7 +52,7 @@ class Convolution:
         The kernel function here is the second derivative of gaussian
         Parameters
         ----------
-        domain: np.array
+        domain: np.ndarray
             the channel of the spectrum (or other function)
         center: float
             the center of the kernel function

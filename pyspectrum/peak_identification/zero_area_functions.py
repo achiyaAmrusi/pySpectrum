@@ -26,7 +26,7 @@ def gaussian_2_dev(x, mean, fwhm):
 
 def asymmetrical_rect_zero_area(x, mean, width):
     """
-    First derivative of a Gaussian.
+    non-symmetrical zero area function for non-symmetrical peak recognition
 
     Parameters
     ----------
