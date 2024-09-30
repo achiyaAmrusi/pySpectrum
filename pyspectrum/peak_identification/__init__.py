@@ -1,4 +1,3 @@
-from .find_gamma_peaks import FindPeaks, Convolution
+from .convolution import Convolution
 from .zero_area_functions import gaussian_2_dev, asymmetrical_rect_zero_area
-from .peaks_fit import GaussianWithBGFitting
-from .peak import Peak
+from .find_gamma_peaks import FindPeaksDomain, FindPeaksCenters
