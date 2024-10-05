@@ -6,4 +6,4 @@ pandas~=2.1.1
 lmfit~=1.2.2
 scipy~=1.11.3
 matplotlib~=3.7.2
-pyspectrum~=0.1
+pyspectrum~=1.0
