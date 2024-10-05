@@ -45,7 +45,7 @@ def asymmetrical_rect_zero_area(x, mean, width):
 1   1
 1----
     """
-    left_right_width_factor = 0.6
+    left_right_width_factor = 0.7
     func_val = []
     domains = [mean - width/2-round(left_right_width_factor*2*width),
                mean - width / 2,
