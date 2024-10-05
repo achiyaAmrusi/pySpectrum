@@ -1,2 +1,5 @@
+# Default ignored files
+.idea/
+.git/
 /pySpectrum.egg-info/
 .gitignore
